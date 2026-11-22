@@ -17,6 +17,7 @@ from terramind.schemas import (
     Difficulty,
     EvidenceChunk,
     GroupProfile,
+    LegEstimate,
     PointOfInterest,
     TrailCandidate,
     TrailType,
@@ -123,6 +124,13 @@ def test_build_plan_orders_stops_along_the_trail() -> None:
     assert [s.kind for s in p.stops] == ["trailhead", "viewpoint", "water", "end"]  # parking is not a stop
     early = build_plan(draft, trail, pois, None, req, time(6, 35), [])  # the start agent 3 approved
     assert early.start_time == time(6, 35) and early.end_time < p.end_time
+    assert p.drive_minutes is None and p.depart_at is None  # no starting point, no drive
+    home = req.model_copy(update={"origin": (32.79, 34.99), "origin_label": "חיפה"})
+    leg = LegEstimate(
+        mode="drive", distance_km=61.4, minutes=55, method="routing_engine", route=[(32.79, 34.99)]
+    )
+    driven = build_plan(draft, trail, pois, None, home, time(8), [], leg)
+    assert (driven.drive_minutes, driven.depart_at, driven.origin_label) == (55, time(7, 5), "חיפה")
 
 
 def test_open_meteo_parsing() -> None:

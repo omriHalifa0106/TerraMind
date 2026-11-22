@@ -4,7 +4,9 @@ Only trails agent 3 approved reach this agent. For the top few, it fetches the t
 the points of interest along it (springs, viewpoints, ruins) from PostGIS, in parallel. Claude
 (Sonnet) then makes the judgment call: which trail fits the request best, and which stops are worth
 it. Everything numeric is computed by code from the map data, never by the model: stop order
-(by distance along the trail), walking times at the group's pace, drive time, start and end.
+(by distance along the trail), walking times at the group's pace, start and end. When the user set
+a starting point, the drive to the trailhead comes from real roads (OSRM, via the gis server's
+estimate_leg), and the plan says when to leave home.
 """
 
 from __future__ import annotations
@@ -18,13 +20,22 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field, ValidationError
 
-from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, drive_minutes, hike_minutes, walk_minutes
+from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, hike_minutes, walk_minutes
 from terramind.geo import TERRAIN_FACTOR as TERRAIN
 from terramind.graph.nodes.common import emit, error, prompt, to_json
 from terramind.graph.state import TerraMindContext, TerraMindState, approved
 from terramind.llm.caching import cached_system
 from terramind.llm.client import LLMError
-from terramind.schemas import PointOfInterest, RoutePlan, Stop, StopKind, TrailCandidate, TripRequest
+from terramind.schemas import (
+    LegEstimate,
+    NodeError,
+    PointOfInterest,
+    RoutePlan,
+    Stop,
+    StopKind,
+    TrailCandidate,
+    TripRequest,
+)
 from terramind.schemas.tool_results import PoiResult, TrailDetails
 
 TRAILS_TO_COMPARE = 3
@@ -70,6 +81,7 @@ def build_plan(
     req: TripRequest,
     start_time: time,
     alternatives: list[str],
+    drive: LegEstimate | None = None,
 ) -> RoutePlan:
     """The deterministic schedule: stops ordered by distance along the trail, times at the group's pace."""
     pace = req.group.pace_kmh
@@ -119,7 +131,13 @@ def build_plan(
         stops=stops,
         walk_km=trail.length_km,
         walk_minutes=walking,
-        drive_minutes=drive_minutes(req.origin, trail.trailhead) if req.origin else None,
+        drive_minutes=drive.minutes if drive else None,
+        drive_km=drive.distance_km if drive else None,
+        drive_method=drive.method if drive else None,
+        drive_route=drive.route if drive else [],
+        origin=req.origin,
+        origin_label=req.origin_label,
+        depart_at=_at(start, -drive.minutes) if drive else None,
         start_time=start.time().replace(second=0, microsecond=0),
         end_time=_at(start, walking + dwell),
         alternatives_considered=alternatives,
@@ -146,6 +164,30 @@ async def _map_data(
         pois = []
         problems.append(f"find_pois_near_trail({trail_id}): {str(exc)[:150]}")
     return trail_end, pois, problems
+
+
+async def _drive_leg(
+    ctx: TerraMindContext, req: TripRequest, trail: TrailCandidate, errors: list[NodeError]
+) -> LegEstimate | None:
+    """Road drive from the user's starting point to the trailhead (OSRM through the gis server)."""
+    if req.origin is None:
+        return None
+    raw = await ctx.tools.call(
+        "gis",
+        "estimate_leg",
+        {
+            "from_lat": req.origin[0],
+            "from_lon": req.origin[1],
+            "to_lat": trail.trailhead[0],
+            "to_lon": trail.trailhead[1],
+            "mode": "drive",
+        },
+    )
+    try:
+        return LegEstimate.model_validate(raw)
+    except ValidationError as exc:
+        errors.append(error("route_planner", "tool_error", f"estimate_leg: {str(exc)[:150]}"))
+        return None
 
 
 def _poi_brief(pois: list[PointOfInterest]) -> list[dict[str, Any]]:
@@ -214,7 +256,10 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
     trail = by_id[draft.trail_id]
     start = next(a.start_time for a in safe if a.trail_id == trail.trail_id)  # the start agent 3 approved
     trail_end, pois, _ = data[trail.trail_id]
-    plan = build_plan(draft, trail, pois, trail_end, req, start, [c.trail_id for c in top if c is not trail])
+    drive = await _drive_leg(ctx, req, trail, errors)
+    plan = build_plan(
+        draft, trail, pois, trail_end, req, start, [c.trail_id for c in top if c is not trail], drive
+    )
 
     emit(runtime, "plan", node="route_planner", plan=plan.model_dump(mode="json"), rationale=draft.rationale)
     update: dict[str, Any] = {"plan": plan, "plan_rationale": draft.rationale}

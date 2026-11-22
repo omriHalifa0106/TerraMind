@@ -80,6 +80,11 @@ async def request_analyst(state: TerraMindState, runtime: Runtime[TerraMindConte
     if not req.region and named and (found := region_of(named[0].trailhead)) is not None:
         req = req.model_copy(update={"region": found.name_en})
         notes.append(f"Region inferred from the trail you named ({named[0].name_he or named[0].name}).")
+    if (origin := state.get("user_origin")) is not None:
+        # Chosen in the UI, so it is exact: it overrides anything the model guessed from the text.
+        req = req.model_copy(
+            update={"origin": (origin["lat"], origin["lon"]), "origin_label": origin["label"]}
+        )
     if req.trip_date is None:
         req = req.model_copy(update={"trip_date": today + timedelta(days=1)})
         notes.append(f"No date given: planned for tomorrow ({today + timedelta(days=1):%Y-%m-%d}).")

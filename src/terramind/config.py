@@ -60,6 +60,10 @@ class Settings(BaseSettings):
         ]
     )
     mock_alerts_url: str = "http://localhost:8200"
+    # Road routing (agent 4's drive times): the OSRM container from docker-compose.
+    osrm_url: str = "http://localhost:5000"
+    # Address -> coordinates for "starting from". Public Nominatim: max 1 request/s, results cached.
+    nominatim_url: str = "https://nominatim.openstreetmap.org/search"
     http_timeout_s: float = 8.0
 
     # --- ingestion ---

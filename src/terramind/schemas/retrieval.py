@@ -47,6 +47,7 @@ class LegEstimate(Frozen):
     distance_km: float
     minutes: int
     method: Literal["geodesic_factor", "routing_engine"] = "geodesic_factor"
+    route: list[LatLon] = Field(default_factory=list)  # road geometry (routing engine only)
 
 
 class ToolStatus(Frozen):

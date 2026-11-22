@@ -32,8 +32,17 @@ from terramind.schemas import (
 )
 
 
+class Origin(TypedDict):
+    """Where the group drives from: the browser's location or an address the user looked up."""
+
+    lat: float
+    lon: float
+    label: str
+
+
 class TerraMindState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]  # the user's message (+ the final answer)
+    user_origin: NotRequired[Origin | None]  # "starting from", picked in the UI (not parsed from text)
 
     # --- agent 1: request analysis ---
     request: NotRequired[TripRequest]
@@ -80,6 +89,6 @@ def approved(state: TerraMindState) -> list[CandidateAssessment]:
     return [by_id[c.trail_id] for c in state.get("candidates", []) if c.trail_id in by_id]
 
 
-def turn_input(messages: list[AnyMessage]) -> TerraMindState:
+def turn_input(messages: list[AnyMessage], origin: Origin | None = None) -> TerraMindState:
     """A typed graph input for one user message (accumulating channels start empty)."""
-    return {"messages": messages, "assessments": [], "errors": []}
+    return {"messages": messages, "user_origin": origin, "assessments": [], "errors": []}

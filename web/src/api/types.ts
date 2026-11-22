@@ -25,6 +25,12 @@ export interface RoutePlan {
   walk_km: number;
   walk_minutes: number;
   drive_minutes: number | null;
+  drive_km: number | null;
+  drive_method: "geodesic_factor" | "routing_engine" | null;
+  drive_route: LatLon[];
+  origin: LatLon | null;
+  origin_label: string | null;
+  depart_at: string | null;
   start_time: string;
   end_time: string;
   alternatives_considered: string[];
@@ -122,6 +128,7 @@ export interface TripRequest {
   max_length_km: number | null;
   max_drive_minutes: number | null;
   origin: LatLon | null;
+  origin_label: string | null;
   group: { adults: number; children: number; min_child_age: number | null; fitness: string; pace_kmh: number };
   must_have: string[];
   avoid: string[];
@@ -168,3 +175,22 @@ export interface PipelineRun {
   detail: string | null;
 }
 export type PipelineStatus = Partial<Record<"weather" | "alerts", PipelineRun>>;
+
+/** "Starting from": the browser's location or a geocoded address. */
+export interface Origin {
+  lat: number;
+  lon: number;
+  label: string;
+}
+
+export interface Place {
+  label: string;
+  lat: number;
+  lon: number;
+}
+
+export interface GeocodeResult {
+  status: "ok" | "empty" | "error" | "unavailable";
+  detail?: string | null;
+  places: Place[];
+}

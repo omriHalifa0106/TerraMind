@@ -83,6 +83,24 @@ def wait_ready(svc: Service, procs: Procs) -> None:
     raise SystemExit(f"ERROR: {svc.name} was not ready after {svc.wait_s:.0f}s")
 
 
+def _port_in_use(port: int) -> bool:
+    with socket.socket() as sock:
+        sock.settimeout(0.5)
+        return sock.connect_ex(("127.0.0.1", port)) == 0
+
+
+def check_ports_free() -> None:
+    """Refuse to start next to an older stack: its servers would answer our health checks, and the
+    browser would silently keep talking to the old code."""
+    busy = [p for p in (*(s.port for s in SERVICES if s.port), 8200, 8000) if _port_in_use(p)]
+    if busy:
+        raise SystemExit(
+            f"ERROR: port(s) {', '.join(map(str, sorted(set(busy))))} already in use. Another "
+            "`scripts.dev` (or a leftover server) is probably still running: stop it with Ctrl+C in its "
+            "terminal, then start again."
+        )
+
+
 def preflight() -> None:
     """Check the database before starting anything, with a message that says what to do."""
     from terramind.config import get_settings
@@ -100,6 +118,7 @@ def preflight() -> None:
 
 
 def main() -> None:
+    check_ports_free()
     preflight()
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     # On Windows each child gets its own process group, so CTRL_BREAK stops it without killing us.

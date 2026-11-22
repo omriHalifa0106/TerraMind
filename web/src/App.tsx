@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
-import type { Health } from "./api/types";
+import type { Health, Origin } from "./api/types";
 import { Chat } from "./components/Chat";
 import { DataFreshness } from "./components/DataFreshness";
+import { loadOrigin, saveOrigin } from "./components/OriginPicker";
 import { Logo, Wordmark } from "./components/icons";
 import { TrailMap } from "./components/TrailMap";
 import { useChat, vetoedTrails } from "./hooks/useChat";
@@ -39,6 +40,11 @@ export function App() {
   const health = useHealth();
   const scenarios = useScenarios();
   const { state, send, stop, showOnMap } = useChat(scenarios.sync);
+  const [origin, setOrigin] = useState<Origin | null>(loadOrigin);
+  const changeOrigin = (o: Origin | null) => {
+    setOrigin(o);
+    saveOrigin(o);
+  };
 
   // The map follows the newest turn, unless the user picked an older plan.
   const mapTurn = useMemo(() => {
@@ -86,7 +92,9 @@ export function App() {
           turns={state.turns}
           busy={state.busy}
           mapTurnId={plan ? (mapTurn?.id ?? null) : null}
-          onSend={(t) => void send(t)}
+          origin={origin}
+          onOriginChange={changeOrigin}
+          onSend={(t) => void send(t, origin)}
           onStop={stop}
           onShowOnMap={showOnMap}
         />

@@ -68,3 +68,17 @@ class TrailStatusResult(Frozen):
     status: Status
     detail: str | None = None
     trail: TrailStatus | None = None
+
+
+class Place(Frozen):
+    label: str
+    lat: float
+    lon: float
+
+
+class GeocodeResult(Frozen):
+    """Address / place name -> coordinates (the user's starting point)."""
+
+    status: Status
+    detail: str | None = None
+    places: list[Place] = Field(default_factory=list)

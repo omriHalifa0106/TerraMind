@@ -18,7 +18,11 @@ Anything not in the spec is removed, not kept "just in case".
   `weather_forecasts`, `trail_status`, `trail_alerts`; every run is logged in `ingestion_runs`.
   The weather/alerts MCP servers read these tables (weather falls back to a live fetch; stale alerts
   -> `unavailable`). Switching the demo scenario triggers an alerts run (API `/scenarios/{name}`).
-- Next: 4 OSRM drive times (if time allows), 5 LangSmith check + Hebrew README explaining every part.
+- Step 4 done: OSRM (docker compose `osrm`, Israel extract prepared once into the `osrm-data`
+  volume). gis-server `estimate_leg(mode="drive")` uses it (falls back to straight line x factor);
+  `geocode` uses Nominatim (1 req/s, cached). The UI's "יוצאים מ" (browser location or address)
+  is sent with the message; agent 4 adds drive time, route and departure time to the plan.
+- Next: 5 LangSmith check + Hebrew README explaining every part.
 - Alerts/closures still come from the Mock Alerts API (matched by trail name) until a real source is found.
 - `docs/ARCHITECTURE.md` describes the old 12-node design; it is replaced by the README in step 5.
 
@@ -41,7 +45,7 @@ Anything not in the spec is removed, not kept "just in case".
 
 ```
 uv sync --extra embeddings                 # deps (+ torch for bge-m3)
-docker compose up -d db                    # database (host port 5433)
+docker compose up -d db osrm               # database (host port 5433) + OSRM (5000; first run prepares the map)
 uv run python -m scripts.migrate           # schema
 uv run python -m ingestion.osm_loader      # then derive_attributes, seed_knowledge
 uv run python -m ingestion.pipeline --once # weather + alerts into the DB (scripts.dev runs it on a schedule)

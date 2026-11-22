@@ -6,15 +6,18 @@ import logging
 from typing import Literal
 
 import asyncpg
+import httpx
 from fastmcp import FastMCP
 
 from mcp_servers.common.db import get_pool
-from mcp_servers.gis_server import queries
+from mcp_servers.gis_server import queries, routing
 from terramind.config import get_settings
 from terramind.regions import REGIONS, resolve_region
 from terramind.schemas import Difficulty, LegEstimate
 from terramind.schemas.tool_results import (
+    GeocodeResult,
     GeoJsonResult,
+    Place,
     PoiResult,
     RegionInfo,
     RegionList,
@@ -143,8 +146,26 @@ async def estimate_leg(
     mode: Literal["walk", "drive"] = "walk",
     pace_kmh: float = 3.5,
 ) -> LegEstimate:
-    """Estimated distance and minutes between two points (straight line x detour factor in the MVP)."""
+    """Distance and minutes between two points. Driving uses real roads (OSRM routing engine,
+    with the route geometry); if OSRM is unavailable, or for walking, a straight-line estimate
+    times a detour factor. `method` says which one answered."""
+    if mode == "drive" and (leg := await routing.osrm_drive((from_lat, from_lon), (to_lat, to_lon))):
+        return leg
     return queries.estimate_leg((from_lat, from_lon), (to_lat, to_lon), mode, pace_kmh)
+
+
+@mcp.tool
+async def geocode(query: str, limit: int = 5) -> GeocodeResult:
+    """Coordinates of an address or place name in Israel (OpenStreetMap Nominatim)."""
+    query = query.strip()[:200]
+    if len(query) < 2:
+        return GeocodeResult(status="empty", detail="query too short")
+    try:
+        places = await routing.geocode(query, max(1, min(limit, 5)))
+    except (httpx.HTTPError, ValueError, KeyError) as exc:
+        log.warning("geocoding failed: %s", type(exc).__name__)
+        return GeocodeResult(status="unavailable", detail=f"geocoder unreachable ({type(exc).__name__})")
+    return GeocodeResult(status="ok" if places else "empty", places=[Place(**p) for p in places])
 
 
 @mcp.tool

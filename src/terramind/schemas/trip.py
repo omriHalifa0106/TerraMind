@@ -26,9 +26,7 @@ class TrailType(StrEnum):
 
 class GroupProfile(Frozen):
     adults: int = Field(default=2, ge=1, le=50, description="Adults in the group")
-    children: int = Field(
-        default=0, ge=0, le=50, description="Children in the group ('עם שני ילדים' -> 2)"
-    )
+    children: int = Field(default=0, ge=0, le=50, description="Children in the group ('עם שני ילדים' -> 2)")
     min_child_age: int | None = Field(
         default=None, ge=0, le=17, description="Age of the youngest child, if stated"
     )
@@ -48,6 +46,7 @@ class TripRequest(Frozen):
     max_length_km: float | None = Field(default=None, gt=0, le=40)
     max_drive_minutes: int | None = Field(default=None, gt=0, le=300)
     origin: LatLon | None = Field(default=None, description="Where the group drives from")
+    origin_label: str | None = Field(default=None, description="Human name of the origin")
     group: GroupProfile = Field(default_factory=GroupProfile)
     must_have: list[str] = Field(default_factory=list)
     avoid: list[str] = Field(default_factory=list)

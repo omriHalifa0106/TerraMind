@@ -28,7 +28,13 @@ class RoutePlan(Frozen):
     stops: list[Stop] = Field(min_length=2)
     walk_km: float
     walk_minutes: int
-    drive_minutes: int | None = None
+    drive_minutes: int | None = None  # from the user's starting point to the trailhead
+    drive_km: float | None = None
+    drive_method: Literal["geodesic_factor", "routing_engine"] | None = None
+    drive_route: list[LatLon] = Field(default_factory=list)  # for the map
+    origin: LatLon | None = None
+    origin_label: str | None = None
+    depart_at: time | None = None  # when to leave home to reach the trailhead at start_time
     start_time: time
     end_time: time
     alternatives_considered: list[str] = Field(default_factory=list)

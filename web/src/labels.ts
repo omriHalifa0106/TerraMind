@@ -46,10 +46,10 @@ export const AGENT_INFO: Record<AgentName, AgentInfo> = {
   route_planner: {
     persona: "המתכנן",
     title: "תכנון המסלול",
-    role: "בוחר את המסלול הטוב מבין הבטוחים, מסדר את התחנות ומחשב זמני הליכה ונסיעה ושעת סיום לפני השקיעה.",
-    working: "מסדר תחנות ומחשב זמנים…",
-    engine: "Claude · פלט מובנה · PostGIS",
-    tools: ["get_trail_details", "find_pois_near_trail"],
+    role: "בוחר את המסלול הטוב מבין הבטוחים, מסדר את התחנות, מחשב זמני הליכה ונסיעה בכבישים אמיתיים, ומתי לצאת מהבית.",
+    working: "מסדר תחנות ומחשב זמני נסיעה והליכה…",
+    engine: "Claude · פלט מובנה · PostGIS · OSRM",
+    tools: ["get_trail_details", "find_pois_near_trail", "estimate_leg"],
   },
   presenter: {
     persona: "המסביר",
@@ -115,6 +115,7 @@ export function requestChips(r: TripRequest): { label: string; value: string }[]
   add("משך", r.max_duration_hours != null && `עד ${r.max_duration_hours} שעות`);
   add("אורך", r.max_length_km != null && `עד ${r.max_length_km} ק״מ`);
   add("נסיעה", r.max_drive_minutes != null && `עד ${r.max_drive_minutes} דק׳`);
+  add("יוצאים מ", r.origin_label);
   const g = r.group;
   add("קבוצה", `${g.adults} מבוגרים${g.children ? ` · ${g.children} ילדים` : ""}${g.min_child_age != null ? ` (מגיל ${g.min_child_age})` : ""}`);
   add("כושר", word(g.fitness));

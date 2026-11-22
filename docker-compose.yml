@@ -27,6 +27,42 @@ services:
       interval: 5s
       retries: 10
 
+  # --- OSRM: real road drive times for agent 4. The Israel OSM extract is downloaded and
+  # prepared once into the osrm-data volume (a few minutes); later starts reuse it. ---
+  osrm-download:
+    image: curlimages/curl:8.11.1
+    user: root
+    volumes: ["osrm-data:/data"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -s /data/israel.osm.pbf ||
+        (curl -fL --retry 3 -o /data/israel.osm.pbf.part
+        https://download.geofabrik.de/asia/israel-and-palestine-latest.osm.pbf
+        && mv /data/israel.osm.pbf.part /data/israel.osm.pbf)
+
+  osrm-prepare:
+    image: ghcr.io/project-osrm/osrm-backend:v6.0.0
+    depends_on:
+      osrm-download: { condition: service_completed_successfully }
+    volumes: ["osrm-data:/data"]
+    entrypoint: ["sh", "-c"]
+    command:
+      - >-
+        test -f /data/israel.osrm.mldgr ||
+        (osrm-extract -p /opt/car.lua /data/israel.osm.pbf
+        && osrm-partition /data/israel.osrm
+        && osrm-customize /data/israel.osrm)
+
+  osrm:
+    image: ghcr.io/project-osrm/osrm-backend:v6.0.0
+    depends_on:
+      osrm-prepare: { condition: service_completed_successfully }
+    command: osrm-routed --algorithm mld /data/israel.osrm
+    ports: ["127.0.0.1:5000:5000"]   # local only
+    volumes: ["osrm-data:/data"]
+    restart: unless-stopped
+
   mock-alerts:
     <<: *py
     profiles: []   # always on
@@ -78,5 +114,6 @@ services:
       mcp-alerts: { condition: service_started }
 
 volumes:
+  osrm-data:
   pgdata:
   hf-cache:

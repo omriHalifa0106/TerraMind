@@ -1,9 +1,11 @@
 import { useEffect, useRef, useState, type FormEvent, type KeyboardEvent } from "react";
+import type { Origin } from "../api/types";
 import type { Turn } from "../hooks/useChat";
 import { AGENT_INFO, AGENT_ORDER, hhmm, hoursMinutes } from "../labels";
 import { AgentRun } from "./AgentRun";
 import { AgentIcon, Alert, Logo, MapPin, Send } from "./icons";
 import { Markdown } from "./Markdown";
+import { OriginPicker } from "./OriginPicker";
 
 const EXAMPLES = [
   "מסלול מים קל בגליל העליון לשבת, עם שני ילדים",
@@ -15,12 +17,14 @@ interface Props {
   turns: Turn[];
   busy: boolean;
   mapTurnId: number | null;
+  origin: Origin | null;
+  onOriginChange: (o: Origin | null) => void;
   onSend: (text: string) => void;
   onStop: () => void;
   onShowOnMap: (turnId: number) => void;
 }
 
-export function Chat({ turns, busy, mapTurnId, onSend, onStop, onShowOnMap }: Props) {
+export function Chat({ turns, busy, mapTurnId, origin, onOriginChange, onSend, onStop, onShowOnMap }: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // follow new output only while the user is at the bottom
 
@@ -45,7 +49,10 @@ export function Chat({ turns, busy, mapTurnId, onSend, onStop, onShowOnMap }: Pr
           <TurnView key={t.id} turn={t} onMap={mapTurnId === t.id} onShowOnMap={() => onShowOnMap(t.id)} />
         ))}
       </div>
-      <Composer busy={busy} onSend={onSend} onStop={onStop} />
+      <div className="composer-wrap">
+        <OriginPicker origin={origin} onChange={onOriginChange} />
+        <Composer busy={busy} onSend={onSend} onStop={onStop} />
+      </div>
     </section>
   );
 }
@@ -135,10 +142,16 @@ function PlanCard({ turn, onMap, onShowOnMap }: { turn: Turn; onMap: boolean; on
         <span className="eyebrow">המסלול שנבחר</span>
         <strong>{p.title}</strong>
         <span className="stats">
-          {p.walk_km.toFixed(1)} ק״מ · {hoursMinutes(p.walk_minutes)} שעות הליכה
-          {p.drive_minutes != null ? ` · ${hoursMinutes(p.drive_minutes)} נסיעה` : ""} · {hhmm(p.start_time)}–
+          {p.walk_km.toFixed(1)} ק״מ · {hoursMinutes(p.walk_minutes)} שעות הליכה · {hhmm(p.start_time)}–
           {hhmm(p.end_time)}
         </span>
+        {p.drive_minutes != null && p.depart_at && (
+          <span className="stats drive">
+            יוצאים מ{p.origin_label ?? "נקודת היציאה"} ב-<b>{hhmm(p.depart_at)}</b> · נסיעה{" "}
+            {hoursMinutes(p.drive_minutes)} שעות
+            {p.drive_km != null ? ` (${p.drive_km.toFixed(0)} ק״מ)` : ""}
+          </span>
+        )}
       </div>
       <button type="button" onClick={onShowOnMap} disabled={onMap}>
         <MapPin className="icon" />

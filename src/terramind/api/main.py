@@ -22,6 +22,7 @@ from ingestion import alerts_ingest
 from terramind.api.sse import stream_turn
 from terramind.config import get_settings
 from terramind.db import DatabaseSetupError, connect
+from terramind.graph.state import Origin
 from terramind.runtime import AppRuntime, open_runtime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -43,8 +44,15 @@ def _rt(request: Request) -> AppRuntime:
     return rt
 
 
+class OriginIn(BaseModel):
+    lat: float = Field(ge=29, le=34)  # Israel
+    lon: float = Field(ge=34, le=36.5)
+    label: str = Field(min_length=1, max_length=200)
+
+
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+    origin: OriginIn | None = None  # "starting from" (browser location or a geocoded address)
 
 
 @app.post("/chat/stream")
@@ -53,7 +61,12 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
     rt = _rt(request)
 
     async def events() -> AsyncIterator[dict[str, str]]:
-        async for event in stream_turn(rt, body.message):
+        origin: Origin | None = (
+            {"lat": body.origin.lat, "lon": body.origin.lon, "label": body.origin.label}
+            if body.origin
+            else None
+        )
+        async for event in stream_turn(rt, body.message, origin):
             if await request.is_disconnected():
                 break  # the user pressed stop or left: stop the run instead of burning tokens
             yield event
@@ -68,6 +81,13 @@ async def trail_geojson(trail_id: str, request: Request) -> dict[str, Any]:
         raise HTTPException(404 if result.get("status") == "empty" else 503, result.get("detail"))
     feature: dict[str, Any] = result["feature"]
     return feature
+
+
+@app.get("/geocode")
+async def geocode(q: str, request: Request) -> dict[str, Any]:
+    """Address search for the "starting from" picker (through the gis MCP server)."""
+    result: dict[str, Any] = await _rt(request).gateway.call("gis", "geocode", {"query": q[:200]})
+    return result
 
 
 @app.get("/scenarios")

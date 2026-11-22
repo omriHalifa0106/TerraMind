@@ -245,6 +245,7 @@ function body(name: AgentName, t: Turn): ReactNode {
               </li>
             ))}
           </ol>
+          <DriveLine t={t} />
           {t.rationale && (
             <div className="quote">
               <em>למה המסלול הזה</em>
@@ -263,6 +264,25 @@ function body(name: AgentName, t: Turn): ReactNode {
         <Skeleton lines={1} />
       );
   }
+}
+
+/** Agent 4's drive leg: real roads from OSRM, or the straight-line fallback (said so). */
+function DriveLine({ t }: { t: Turn }) {
+  const p = t.plan;
+  if (!p) return null;
+  if (p.drive_minutes == null) {
+    return <div className="drive-line muted">לא נבחרה נקודת יציאה, לכן אין זמן נסיעה.</div>;
+  }
+  const engine = p.drive_method === "routing_engine" ? "OSRM · כבישים אמיתיים" : "הערכה בקו אווירי (OSRM לא זמין)";
+  return (
+    <div className="drive-line">
+      <span>
+        נסיעה מ{p.origin_label ?? "נקודת היציאה"}: <b>{p.drive_minutes} דק׳</b>
+        {p.drive_km != null && ` · ${p.drive_km.toFixed(0)} ק״מ`} · יציאה ב-<b>{hhmm(p.depart_at)}</b>
+      </span>
+      <span className="engine-tag">{engine}</span>
+    </div>
+  );
 }
 
 /** Agent 2: the tools its LLM chose, running side by side, then the trails they found. */

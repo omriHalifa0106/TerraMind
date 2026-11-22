@@ -36,7 +36,10 @@ async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
         app.state.rt = rt  # skip the lifespan: no ports
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t", timeout=60) as c:
-            resp = await c.post("/chat/stream", json={"message": "מסלול מים בגליל העליון מחר"})
+            haifa = {"lat": 32.79, "lon": 34.99, "label": "חיפה"}
+            resp = await c.post(
+                "/chat/stream", json={"message": "מסלול מים בגליל העליון מחר", "origin": haifa}
+            )
             events = parse_sse(resp.text)
             kinds = [e for e, _ in events]
             assert kinds[0] == "start" and kinds[-1] == "done"
@@ -48,6 +51,10 @@ async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
             ]
             assert vetoes and vetoes[0]["issues"][0]["code"] == "CLOSED"
             final = next(d["final"] for e, d in events if e == "final")
+            # The starting point from the UI reached agent 4: a drive leg and a time to leave home
+            # (OSRM when it runs locally, otherwise the straight-line fallback).
+            plan = final["plan"]
+            assert plan["origin_label"] == "חיפה" and plan["drive_minutes"] > 0 and plan["depart_at"]
             geo = await c.get(f"/trails/{final['plan']['trail_id']}/geojson")
             assert geo.status_code == 200 and geo.json()["type"] == "Feature"
             assert (await c.get("/trails/nope/geojson")).status_code == 404

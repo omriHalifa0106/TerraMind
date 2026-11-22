@@ -16,7 +16,7 @@ from typing import Any
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
 
-from terramind.graph.state import turn_input
+from terramind.graph.state import Origin, turn_input
 from terramind.mcp_client.client import start_call_log
 from terramind.runtime import AppRuntime
 
@@ -27,7 +27,9 @@ def sse(event: str, data: Any) -> dict[str, str]:
     return {"event": event, "data": json.dumps(data, ensure_ascii=False, default=str)}
 
 
-async def stream_turn(rt: AppRuntime, message: str) -> AsyncIterator[dict[str, str]]:
+async def stream_turn(
+    rt: AppRuntime, message: str, origin: Origin | None = None
+) -> AsyncIterator[dict[str, str]]:
     run_id = f"run-{uuid.uuid4().hex[:12]}"
     config: RunnableConfig = {
         "recursion_limit": rt.context.settings.recursion_limit,
@@ -39,7 +41,7 @@ async def stream_turn(rt: AppRuntime, message: str) -> AsyncIterator[dict[str, s
     yield sse("start", {"run_id": run_id})
     try:
         async for mode, chunk in rt.graph.astream(
-            turn_input([HumanMessage(content=message)]),
+            turn_input([HumanMessage(content=message)], origin),
             config,
             context=rt.context,
             stream_mode=["updates", "custom"],

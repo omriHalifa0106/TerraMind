@@ -1,6 +1,6 @@
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { GeoJSON, MapContainer, Marker, Popup, TileLayer, useMap } from "react-leaflet";
+import { GeoJSON, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
 import { api } from "../api/client";
 import type { CandidateAssessment, RoutePlan, TrailFeature } from "../api/types";
 import type { VetoedTrail } from "../hooks/useChat";
@@ -9,6 +9,9 @@ import { Clock, Sun } from "./icons";
 
 const CHOSEN_STYLE = { color: "#1E4D3A", weight: 6, opacity: 0.95 };
 const VETO_STYLE = { color: "#B4442A", weight: 3, dashArray: "6 7", opacity: 0.85 };
+
+const DRIVE_STYLE = { color: "#2E6F8E", weight: 4, opacity: 0.75, dashArray: "2 8", lineCap: "round" as const };
+const originIcon = L.divIcon({ className: "", html: '<div class="origin-pin"></div>', iconSize: [18, 18] });
 
 const stopIcon = (n: number, last: boolean) =>
   L.divIcon({ className: "", html: `<div class="stop-pin${last ? " end" : ""}">${n}</div>`, iconSize: [28, 28] });
@@ -75,6 +78,15 @@ export function TrailMap({ plan, vetoed, chosen }: Props) {
         {vetoed.map((v) => (
           <VetoedLayer key={v.trailId} trail={v} />
         ))}
+        {plan && plan.drive_route.length > 1 && <Polyline positions={plan.drive_route} pathOptions={DRIVE_STYLE} />}
+        {plan?.origin && (
+          <Marker position={plan.origin} icon={originIcon}>
+            <Popup>
+              <b>{plan.origin_label ?? "נקודת היציאה"}</b>
+              {plan.depart_at && <div>יציאה ב-{hhmm(plan.depart_at)}</div>}
+            </Popup>
+          </Marker>
+        )}
         {/* key forces a fresh layer when the trail changes (GeoJSON data is not reactive) */}
         {feature && <GeoJSON key={feature.properties.trail_id} data={feature} style={CHOSEN_STYLE} />}
         {plan?.stops.map((s, i) => (
@@ -125,6 +137,12 @@ export function TrailMap({ plan, vetoed, chosen }: Props) {
             <i className="sw vetoed" />
             נפסל בבדיקת בטיחות
           </span>
+          {plan && plan.drive_route.length > 1 && (
+            <span>
+              <i className="sw drive" />
+              נסיעה
+            </span>
+          )}
         </div>
       </div>
     </section>

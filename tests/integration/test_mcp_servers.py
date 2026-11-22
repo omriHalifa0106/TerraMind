@@ -118,3 +118,38 @@ async def test_alerts_through_gateway_and_missing_server(loaded_db: str) -> None
     async with down_gw:
         down = await down_gw.call("weather", "get_forecast", {"trail_id": "x"})
         assert down["status"] == "unavailable" and down_gw.connected == []
+
+
+async def test_drive_leg_uses_osrm_and_falls_back_and_geocode() -> None:
+    """estimate_leg(drive): real roads from OSRM; if OSRM is down, the straight-line estimate."""
+    from mcp_servers.gis_server import routing
+
+    osrm = {
+        "code": "Ok",
+        "routes": [
+            {
+                "distance": 51382.7,
+                "duration": 2922.9,
+                "geometry": {"coordinates": [[34.99, 32.79], [35.25, 33.03]]},
+            }
+        ],
+    }
+    nominatim = [{"lat": "32.794", "lon": "34.989", "display_name": "חיפה, נפת חיפה, מחוז חיפה, ישראל"}]
+    leg_args = {"from_lat": 32.79, "from_lon": 34.99, "to_lat": 33.03, "to_lon": 35.25, "mode": "drive"}
+    routing.set_client(None)  # a fresh client inside the respx mock
+    with respx.mock(assert_all_called=False) as m:
+        route = m.get(url__regex=r".*/route/v1/driving/.*").mock(return_value=httpx.Response(200, json=osrm))
+        m.get(url__startswith="https://nominatim.openstreetmap.org").mock(
+            return_value=httpx.Response(200, json=nominatim)
+        )
+        leg = await call(gis, "estimate_leg", leg_args)
+        assert (leg["method"], leg["minutes"], leg["distance_km"]) == ("routing_engine", 49, 51.4)
+        assert leg["route"][0] == [32.79, 34.99]  # [lat, lon] for the map
+
+        route.mock(side_effect=httpx.ConnectError("osrm down"))
+        fallback = await call(gis, "estimate_leg", leg_args)
+        assert fallback["method"] == "geodesic_factor" and fallback["minutes"] > 0 and fallback["route"] == []
+
+        places = await call(gis, "geocode", {"query": "חיפה"})
+        assert places["status"] == "ok" and places["places"][0]["label"] == "חיפה, נפת חיפה, מחוז חיפה"
+    routing.set_client(None)

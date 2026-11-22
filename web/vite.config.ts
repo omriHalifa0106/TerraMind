@@ -16,6 +16,7 @@ export default defineConfig({
       "/scenarios": API,
       "/health": API,
       "/pipeline": API,
+      "/geocode": API,
     },
   },
 });

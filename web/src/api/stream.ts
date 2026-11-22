@@ -1,4 +1,4 @@
-import type { StreamEvent } from "./types";
+import type { Origin, StreamEvent } from "./types";
 
 /**
  * POST a chat message and yield the server's SSE events one by one.
@@ -9,11 +9,15 @@ import type { StreamEvent } from "./types";
  *   data: <json>\n
  *   \n                     <- a blank line ends one event
  */
-export async function* streamChat(message: string, signal: AbortSignal): AsyncGenerator<StreamEvent> {
+export async function* streamChat(
+  message: string,
+  origin: Origin | null,
+  signal: AbortSignal,
+): AsyncGenerator<StreamEvent> {
   const resp = await fetch("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
+    body: JSON.stringify({ message, origin }),
     signal,
   });
   if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);
