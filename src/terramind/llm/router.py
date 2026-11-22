@@ -29,10 +29,11 @@ TASK_TIERS: dict[Task, ModelTier] = {
     "presenter": ModelTier.SMART,  # agent 5: write the explanation
 }
 
-# Structured-output strategies to try, in order: native JSON schema first; forced tool calling is
-# the fallback for models or gateways that do not support it.
+# Structured-output strategies to try, in order. Forced tool calling first: in json_schema mode
+# Haiku returned only the required fields and dropped every optional one (region, difficulty,
+# group...), which then silently took their defaults. json_schema stays as the fallback.
 StructuredMethod = Literal["json_schema", "function_calling"]
-STRUCTURED_METHODS: list[StructuredMethod] = ["json_schema", "function_calling"]
+STRUCTURED_METHODS: list[StructuredMethod] = ["function_calling", "json_schema"]
 
 
 def model_id_for(task: Task, s: Settings | None = None) -> str:

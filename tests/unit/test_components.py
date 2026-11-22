@@ -259,8 +259,8 @@ async def test_structured_output_reuses_the_method_that_worked(monkeypatch: Any)
             class Runner:
                 async def ainvoke(self, msgs: Any, config: Any = None) -> Out:
                     tried.append(method)
-                    if method == "json_schema":
-                        raise RuntimeError("400 unsupported response_format")
+                    if method == "function_calling":
+                        raise RuntimeError("400 tool_choice not supported")
                     return Out(x=1)
 
             return Runner()
@@ -270,4 +270,4 @@ async def test_structured_output_reuses_the_method_that_worked(monkeypatch: Any)
     llm = client_mod.ClaudeLLM()
     for _ in range(3):
         assert (await llm.structured("request_analyst", Out, [])).x == 1
-    assert tried == ["json_schema", "function_calling", "function_calling", "function_calling"]
+    assert tried == ["function_calling", "json_schema", "json_schema", "json_schema"]

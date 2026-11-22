@@ -11,7 +11,10 @@ Rules:
 - start_time: only if stated.
 - difficulty: easy / moderate / hard. Families with small children and "קל"/"easy" -> easy.
 - trail_types: water (מים, נחל, מעיין, מפל), viewpoint (תצפית, נוף), forest (יער, חורש), history (היסטוריה, עתיקות, מבצר), loop (מעגלי), family (משפחות, ילדים).
-- group: adults, children, min_child_age, fitness when mentioned.
+- group: ALWAYS fill it when the user mentions who is coming. Count people written as words too:
+  "עם שני ילדים" -> children=2; "עם הילדים" / "with the kids" -> children=1 if no number is given;
+  "ילדים בני 6 ו-9" -> children=2, min_child_age=6; "זוג" / "my wife and I" -> adults=2; "לבד" / "alone" -> adults=1.
+  fitness: "בכושר" / "fit" -> high; "בלי כושר" / "not fit", elderly or toddlers -> low; otherwise leave the default.
 - max_duration_hours / max_length_km / max_drive_minutes only if stated.
 - semantic_query: ONE short line in the user's language describing what they want, for searching trail descriptions.
 - missing_fields: include "region" only if no area at all can be inferred.

@@ -25,9 +25,13 @@ class TrailType(StrEnum):
 
 
 class GroupProfile(Frozen):
-    adults: int = Field(default=2, ge=1, le=50)
-    children: int = Field(default=0, ge=0, le=50)
-    min_child_age: int | None = Field(default=None, ge=0, le=17)
+    adults: int = Field(default=2, ge=1, le=50, description="Adults in the group")
+    children: int = Field(
+        default=0, ge=0, le=50, description="Children in the group ('עם שני ילדים' -> 2)"
+    )
+    min_child_age: int | None = Field(
+        default=None, ge=0, le=17, description="Age of the youngest child, if stated"
+    )
     fitness: Literal["low", "medium", "high"] = "medium"
     pace_kmh: float = Field(default=3.5, gt=0.5, lt=8.0)  # digital-twin hook
 
