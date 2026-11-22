@@ -54,7 +54,13 @@ class FakeLLM:
         if schema is PlanDraft:
             match = CANDIDATES.search(self.prompts[task])
             first = json.loads(match.group(1))[0] if match else {}
-            draft = PlanDraft(trail_id=first.get("trail_id", "?"), title="Plan", rationale="Best match.")
+            draft = PlanDraft(
+                trail_id=first.get("trail_id", "?"),
+                title="Plan",
+                poi_ids=[],
+                place_ids=[],
+                rationale="Best match.",
+            )
             return draft  # type: ignore[return-value]
         raise AssertionError(f"unexpected structured call: {task} {schema}")
 

@@ -56,6 +56,7 @@ class RoutePlan(Frozen):
     depart_at: time | None = None  # when to leave home to reach the trailhead at start_time
     day_end_time: time | None = None  # end of the last place after the hike (None: hike only)
     dropped_places: list[str] = Field(default_factory=list)  # chosen places left out, with why
+    start_note: str | None = None  # why the hike starts later than the default, if it was moved
     start_time: time
     end_time: time
     alternatives_considered: list[str] = Field(default_factory=list)

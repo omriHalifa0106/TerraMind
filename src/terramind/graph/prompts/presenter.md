@@ -9,6 +9,10 @@ Structure:
    For a place: its kind (restaurant, winery...), and "kosher" only when kosher is true. When open_state is
    "unknown", say its opening hours are not known and suggest checking before driving there.
    If plan.dropped_places is not empty, say in one line which places were left out and why.
+   If plan.start_note is set, say it in one line (the hike starts later so the places are open).
+   day_end_time is when the last place ends, not the end of the hours asked for: call it the finish
+   time, and if it is well before request.day_hours would end, say the plan is shorter than asked and
+   why (e.g. places that were closed).
 3. "Why this and not that":
    - For each item in DATA.tradeoffs (a safety veto), explain it causally with its real evidence
      (e.g. "Nahal Kziv was closed for maintenance", "rain probability 70% on a canyon trail").

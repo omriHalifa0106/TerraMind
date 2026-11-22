@@ -14,6 +14,7 @@ from __future__ import annotations
 import asyncio
 import contextlib
 import uuid
+from collections.abc import Callable
 from datetime import date, datetime, time, timedelta
 from typing import Any
 
@@ -25,23 +26,34 @@ from terramind.day_plan import (
     ON_THE_WAY,
     Legs,
     add_places,
+    best_start,
     default_places,
     kosher_filter,
     leg_pairs,
     split_before_after,
 )
-from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, haversine_km, hike_minutes, walk_minutes
+from terramind.geo import (
+    DWELL_MINUTES,
+    MAX_STOPS,
+    WALK_DETOUR,
+    haversine_km,
+    hike_minutes,
+    max_outing_minutes,
+    walk_minutes,
+)
 from terramind.geo import TERRAIN_FACTOR as TERRAIN
 from terramind.graph.nodes.common import emit, error, prompt, to_json
 from terramind.graph.state import TerraMindContext, TerraMindState, approved
 from terramind.llm.caching import cached_system
 from terramind.llm.client import LLMError
+from terramind.safety.rules import evaluate
 from terramind.schemas import (
     LegEstimate,
     NearbyPlace,
     NodeError,
     PointOfInterest,
     RoutePlan,
+    Severity,
     Stop,
     StopKind,
     TrailCandidate,
@@ -91,8 +103,9 @@ class PlanDraft(BaseModel):
 
     trail_id: str
     title: str = Field(max_length=120)
-    poi_ids: list[str] = Field(default_factory=list, max_length=MAX_STOPS)
-    place_ids: list[str] = Field(default_factory=list, max_length=MAX_PLACES)  # day-plan places, in order
+    # Required (may be empty): in json_schema mode Claude leaves optional fields out.
+    poi_ids: list[str] = Field(max_length=MAX_STOPS)
+    place_ids: list[str] = Field(max_length=MAX_PLACES)  # day-plan places, in order
     rationale: str = Field(max_length=600)
 
 
@@ -331,18 +344,21 @@ def _place_brief(places: list[NearbyPlace], on_way: set[str]) -> list[dict[str, 
     ]
 
 
-async def _with_places(
+async def _day_builder(
     ctx: TerraMindContext,
-    plan: RoutePlan,
+    hike_at: Callable[[time], RoutePlan],
+    start: time,
     draft: PlanDraft,
     req: TripRequest,
     found: tuple[list[NearbyPlace], set[str]] | None,
     budget_min: int,
     sunset: datetime | None,
     keep_ids: list[str],
-) -> RoutePlan:
-    """Add the places the model chose (or sensible defaults) around the hike, timed by day_plan.
+) -> Callable[[time], RoutePlan]:
+    """The day at a given hike start: the places the model chose (or sensible defaults) around the hike,
+    timed by day_plan. Drive legs are fetched once here; the returned function is pure.
     keep_ids: the places of the plan being edited, kept when the model chose none."""
+    plan = hike_at(start)
     places, on_way = found or ([], set())
     by_place = {p.poi_id: p for p in places}
     chosen = [by_place[i] for i in draft.place_ids if i in by_place]  # ids outside the list are ignored
@@ -353,14 +369,18 @@ async def _with_places(
         extra = default_places(places, missing, budget_min) if missing.want_places or not kept else []
         chosen = [*kept, *(p for p in extra if p not in kept)]
     if not chosen:
-        return plan
+        return hike_at
     before, after = split_before_after(chosen[:MAX_PLACES], on_way)
     where: dict[str, LatLon] = {"trailhead": plan.stops[0].location, "hike_end": plan.stops[-1].location}
     if plan.origin:
         where["origin"] = plan.origin
     where.update({p.poi_id: p.location for p in chosen})
     legs = await _legs(ctx, leg_pairs(before, after, plan.origin is not None), where)
-    return add_places(plan, before, after, legs, req, sunset)
+
+    def day_at(at: time) -> RoutePlan:
+        return add_places(hike_at(at), before, after, legs, req, sunset)
+
+    return day_at
 
 
 def _poi_brief(pois: list[PointOfInterest]) -> list[dict[str, Any]]:
@@ -460,6 +480,8 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
         draft = PlanDraft(
             trail_id=top[0].trail_id,
             title=top[0].name_he or top[0].name,
+            poi_ids=[],
+            place_ids=[],
             rationale="Highest-ranked safe candidate (planner model unavailable).",
         )
         errors.append(error("route_planner", "llm_error", exc))
@@ -470,23 +492,29 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
         )
         draft = draft.model_copy(update={"trail_id": top[0].trail_id})
     trail = by_id[draft.trail_id]
-    start = next(a.start_time for a in safe if a.trail_id == trail.trail_id)  # the start agent 3 approved
+    chosen = next(a for a in safe if a.trail_id == trail.trail_id)
+    start = chosen.start_time  # the start agent 3 approved
     trail_end, pois, _ = data[trail.trail_id]
-    plan = build_plan(
-        draft,
-        trail,
-        pois,
-        trail_end,
-        req,
-        start,
-        [c.trail_id for c in top if c is not trail],
-        drive_by[trail.trail_id],
-    )
+    others = [c.trail_id for c in top if c is not trail]
+
+    def hike_at(at: time) -> RoutePlan:
+        return build_plan(draft, trail, pois, trail_end, req, at, others, drive_by[trail.trail_id])
+
+    weather = chosen.weather
+    outing = max_outing_minutes(trail.length_km, req.group.pace_kmh)
+
+    def safe_at(at: time) -> bool:
+        # The same deterministic rules agent 3 used, with the same weather/status/alerts.
+        end = (datetime.combine(date.min, at) + timedelta(minutes=outing)).time()
+        issues = evaluate(trail, req, weather, chosen.trail_status, chosen.alerts, at, end)
+        return not any(i.severity is Severity.CRITICAL for i in issues)
+
+    day_at: Callable[[time], RoutePlan] = hike_at
     if wants_day:
-        weather = next((a.weather for a in safe if a.trail_id == trail.trail_id), None)
-        plan = await _with_places(
+        day_at = await _day_builder(
             ctx,
-            plan,
+            hike_at,
+            start,
             draft,
             req,
             places_by.get(trail.trail_id),
@@ -496,6 +524,16 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
             if current_plan and current_plan["trail_id"] == trail.trail_id
             else [],
         )
+    # The hike's start moves only when the user did not fix it: to after the drive when they said when
+    # they leave home, and later still if that keeps more places open.
+    drive = drive_by[trail.trail_id]
+    earliest = start
+    if req.depart_time is not None and drive is not None:
+        earliest = (datetime.combine(date.min, req.depart_time) + timedelta(minutes=drive.minutes)).time()
+    if req.start_time is None and (wants_day or req.depart_time is not None):
+        plan = best_start(day_at, earliest, safe_at, start, req.depart_time)
+    else:
+        plan = day_at(start)
 
     emit(runtime, "plan", node="route_planner", plan=plan.model_dump(mode="json"), rationale=draft.rationale)
     update: dict[str, Any] = {"plan": plan, "plan_rationale": draft.rationale}

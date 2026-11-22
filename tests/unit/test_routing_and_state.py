@@ -76,6 +76,8 @@ def test_follow_up_scope_is_decided_by_what_changed() -> None:
 
     assert scope(base.model_copy(update={"want_places": ["restaurant"]})) == "replan"
     assert scope(base.model_copy(update={"day_hours": 4})) == "replan"
+    # Leaving home later only moves the hike start, which agent 4 re-checks with the safety rules.
+    assert scope(base.model_copy(update={"depart_time": time(9)})) == "replan"
     assert scope(base.model_copy(update={"start_time": time(9)})) == "search"  # daylight is re-checked
     assert scope(base.model_copy(update={"group": GroupProfile(children=2, min_child_age=5)})) == "search"
     assert scope(base, "different_trail") == "search"

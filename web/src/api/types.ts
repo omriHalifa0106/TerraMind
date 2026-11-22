@@ -51,6 +51,7 @@ export interface RoutePlan {
   depart_at: string | null;
   day_end_time?: string | null;
   dropped_places?: string[];
+  start_note?: string | null;
   start_time: string;
   end_time: string;
   alternatives_considered: string[];

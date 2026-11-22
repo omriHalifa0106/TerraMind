@@ -8,7 +8,9 @@ Rules:
   (Nahal Kziv, Montfort, Nahal Amud, Mount Meron -> "Upper Galilee"; Banias, Nahal Iyun -> "Upper Galilee";
   Yehudiya, Gamla, Nahal El Al, Hexagon Pool / Meshushim, Zavitan -> "Golan").
 - trip_date: resolve relative dates ("מחר", "this Saturday", "בשבת") against TODAY given below. Leave empty if not stated.
-- start_time: only if stated.
+- start_time: when to START WALKING, only if stated that way ("מתחילים ללכת ב-8", "start the hike at 8").
+- depart_time: when they LEAVE HOME ("נצא ב-9", "יוצאים ב-8", "leaving at 9"). Leaving is not
+  starting to walk: never put a departure time into start_time. Use 24h: "ב-9" in a day trip is 09:00.
 - difficulty: easy / moderate / hard. Families with small children and "קל"/"easy" -> easy.
 - trail_types: water (מים, נחל, מעיין, מפל), viewpoint (תצפית, נוף), forest (יער, חורש), history (היסטוריה, עתיקות, מבצר), loop (מעגלי), family (משפחות, ילדים).
 - group: ALWAYS fill it when the user mentions who is coming. Count people written as words too:
@@ -30,7 +32,7 @@ Rules:
 Follow-ups (when PREVIOUS REQUEST / CURRENT PLAN are given, the user is continuing a chat):
 - Return the FULL updated request: start from PREVIOUS REQUEST and apply only what the new message changes.
   "תוסיף מסעדה" -> want_places gains restaurant, everything else stays. "תקצר לארבע שעות" -> day_hours=4.
-  "בלי יקב" -> remove winery from want_places. "נצא ב-9" -> start_time 09:00. "ביום ראשון" -> trip_date.
+  "בלי יקב" -> remove winery from want_places. "נצא ב-9" -> depart_time 09:00 (start_time stays as it was). "ביום ראשון" -> trip_date.
 - change:
   - "edit": the message changes the current trip (hours, places, start time, date, difficulty, group...).
   - "different_trail": they want another trail for the same day ("מסלול אחר", "לא אהבתי את המסלול").

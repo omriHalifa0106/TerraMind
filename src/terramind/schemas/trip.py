@@ -55,7 +55,10 @@ class TripRequest(Frozen):
 
     region: str | None = Field(default=None, description="e.g. 'Upper Galilee', 'Golan', 'Carmel'")
     trip_date: date | None = None
-    start_time: time | None = None
+    start_time: time | None = Field(default=None, description="When to START WALKING, only if stated")
+    depart_time: time | None = Field(
+        default=None, description="When the group leaves home ('נצא ב-9', 'יוצאים מהבית ב-8')"
+    )
     max_duration_hours: float | None = Field(
         default=None, gt=0, le=14, description="Longest WALK the user wants ('מסלול של שעתיים' -> 2)"
     )

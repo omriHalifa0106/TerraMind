@@ -9,7 +9,8 @@ reason, never squeezed in. Pure functions (no I/O): the drive legs are fetched b
 from __future__ import annotations
 
 import math
-from datetime import date, datetime, timedelta
+from collections.abc import Callable
+from datetime import date, datetime, time, timedelta
 from itertools import pairwise
 
 from terramind.geo import DRIVE_DETOUR, DRIVE_KMH, haversine_km
@@ -188,6 +189,54 @@ def add_places(
             "dropped_places": dropped,
         }
     )
+
+
+START_STEP_MIN = 15
+MAX_START_SHIFT_MIN = 240  # never move the hike more than 4 hours past the default start
+
+
+def places_kept(plan: RoutePlan) -> int:
+    return sum(1 for s in plan.stops if s.place_id)
+
+
+def best_start(
+    day_at: Callable[[time], RoutePlan],
+    earliest: time,
+    safe_at: Callable[[time], bool],
+    fallback: time,
+    leave_home: time | None = None,
+) -> RoutePlan:
+    """The day planned at the earliest hike start that keeps the most places open.
+
+    Tries `earliest`, then 15-minute steps up to 4 hours later. A start counts only when `safe_at`
+    (the deterministic safety rules) accepts it and, when the user said when they leave home, the plan
+    does not leave before that. Used only when the user did not fix the hike's start time: a 2 km hike
+    at 08:00 otherwise ends before any restaurant opens. No usable start -> the day at `fallback`
+    (the start agent 3 approved).
+    """
+    best: RoutePlan | None = None
+    base = datetime.combine(date.min, earliest)
+    for shift in range(0, MAX_START_SHIFT_MIN + 1, START_STEP_MIN):
+        moved = base + timedelta(minutes=shift)
+        if moved.date() != base.date():
+            break
+        if not safe_at(moved.time()):
+            continue
+        plan = day_at(moved.time())
+        if leave_home is not None and plan.depart_at is not None and plan.depart_at < leave_home:
+            continue  # e.g. a coffee on the way that would need leaving earlier than they said
+        if best is None or places_kept(plan) > places_kept(best):
+            best = plan
+    if best is None:
+        return day_at(fallback)
+    if best.start_time != earliest:
+        best = best.model_copy(
+            update={
+                "start_note": f"ההליכה מתחילה ב-{best.start_time:%H:%M} ולא ב-{earliest:%H:%M}, "
+                "כדי שהמקומות יהיו פתוחים כשמגיעים"
+            }
+        )
+    return best
 
 
 def default_places(places: list[NearbyPlace], req: TripRequest, budget_min: int) -> list[NearbyPlace]:

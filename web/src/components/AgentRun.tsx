@@ -265,6 +265,7 @@ function body(name: AgentName, t: Turn): ReactNode {
               </li>
             ))}
           </ol>
+          {t.plan.start_note && <p className="skipped">{t.plan.start_note}</p>}
           {(t.plan.dropped_places ?? []).length > 0 && (
             <p className="skipped">לא נכנסו לתוכנית: {(t.plan.dropped_places ?? []).join(" · ")}</p>
           )}

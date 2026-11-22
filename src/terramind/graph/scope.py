@@ -19,7 +19,7 @@ Scope = Literal["search", "replan"]
 SEARCH_FIELDS: dict[str, str] = {
     "region": "אזור",
     "trip_date": "תאריך",
-    "start_time": "שעת יציאה",
+    "start_time": "שעת תחילת ההליכה",
     "difficulty": "קושי",
     "trail_types": "סוג מסלול",
     "max_length_km": "אורך",
@@ -35,6 +35,7 @@ DAY_FIELDS: dict[str, str] = {
     "want_places": "מקומות",
     "kosher_only": "כשרות",
     "origin": "נקודת יציאה",
+    "depart_time": "שעת יציאה מהבית",  # agent 4 re-checks the new start with the safety rules
 }
 
 

@@ -134,7 +134,7 @@ def test_build_plan_orders_stops_along_the_trail() -> None:
     req = TripRequest(
         region="r", trip_date=date(2026, 12, 5), semantic_query="q", group=GroupProfile(pace_kmh=3.5)
     )
-    draft = PlanDraft(trail_id="t", title="T", rationale="r")
+    draft = PlanDraft(trail_id="t", title="T", poi_ids=[], place_ids=[], rationale="r")
     p = build_plan(draft, trail, pois, (33.01, 35.25), req, time(8), [])
     times = [s.arrive_at for s in p.stops]
     assert p.start_time == time(8) and times == sorted(times)  # type: ignore[type-var]
@@ -408,3 +408,38 @@ def test_day_plan_times_places_and_drops_what_does_not_fit() -> None:
     waited = add_places(plan, [], [lunch], {}, req, sunset=None)
     stop = next(s for s in waited.stops if s.place_id == "lunch")
     assert stop.arrive_at == time(11, 0) and stop.open_state == "open" and "ממתינים" in (stop.note or "")
+
+
+def test_best_start_moves_the_hike_so_places_are_open() -> None:
+    """A later start is taken only when it keeps more places, is safe, and does not leave home before
+    the time the user gave; nothing usable -> the start agent 3 approved."""
+    from datetime import datetime, timedelta
+
+    from terramind.day_plan import best_start
+    from terramind.schemas import RoutePlan, Stop
+
+    def day_at(at: time) -> RoutePlan:
+        # A restaurant that only fits when the hike starts at 10:00 or later; the drive is an hour.
+        stops = [
+            Stop(order=0, name="a", kind="trailhead", location=(33, 35)),
+            Stop(order=1, name="b", kind="end", location=(33, 35)),
+        ]
+        if at >= time(10):
+            stops.append(Stop(order=2, name="r", kind="food", location=(33, 35), place_id="r"))
+        depart = (datetime.combine(date.min, at) - timedelta(hours=1)).time()
+        return RoutePlan(
+            plan_id="p", trail_id="t", title="T", walk_km=2, walk_minutes=40, stops=stops,
+            start_time=at, end_time=at, depart_at=depart,
+        )  # fmt: skip
+
+    def always(_: time) -> bool:
+        return True
+
+    moved = best_start(day_at, time(8), always, time(8))
+    assert moved.start_time == time(10) and "10:00" in (moved.start_note or "")
+    unsafe_until_1045 = best_start(day_at, time(8), lambda t: t >= time(10, 45), time(8))
+    assert unsafe_until_1045.start_time == time(10, 45)
+    # "נצא ב-9" with an hour's drive: the earliest start is 10:00, and nothing leaves before 09:00.
+    leaving = best_start(day_at, time(10), always, time(8), leave_home=time(9))
+    assert leaving.start_time == time(10) and leaving.start_note is None
+    assert best_start(day_at, time(8), lambda _: False, time(8)).start_time == time(8)
