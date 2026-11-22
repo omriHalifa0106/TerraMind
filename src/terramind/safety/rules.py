@@ -72,26 +72,27 @@ def evaluate(
 
     # --- closures and alerts ---
     if status is not None and not status.is_open:
-        issues.append(_issue(trail, "CLOSED", Severity.CRITICAL, f"trail status: closed ({status.reason})"))
+        why = f"המסלול סגור: {status.reason}" if status.reason else "המסלול סגור"
+        issues.append(_issue(trail, "CLOSED", Severity.CRITICAL, why))
     for a in alerts:
         if a.kind in CLOSING_KINDS and a.severity is Severity.CRITICAL:
-            issues.append(_issue(trail, "CLOSED", Severity.CRITICAL, f"alert {a.alert_id}: {a.message}"))
+            issues.append(_issue(trail, "CLOSED", Severity.CRITICAL, f"התראה: {a.message}"))
         elif a.kind == "flood":
             # A flood warning endangers stream beds and canyons: veto water trails (or a trail the
             # alert names); for other trails in the region it is a warning, not a veto.
             sev = Severity.CRITICAL if is_water or a.trail_id == trail.trail_id else Severity.WARNING
-            issues.append(_issue(trail, "FLOOD_RISK", sev, f"alert {a.alert_id}: {a.message}"))
+            issues.append(_issue(trail, "FLOOD_RISK", sev, f"אזהרת שיטפונות: {a.message}"))
     if status is not None and status.crowd_level == "high":
-        issues.append(_issue(trail, "CROWDED", Severity.WARNING, "expected crowd level: high"))
+        issues.append(_issue(trail, "CROWDED", Severity.WARNING, "צפוי עומס כבד"))
     if status is not None and status.status == "unavailable":
-        issues.append(_issue(trail, "DATA_UNAVAILABLE", Severity.WARNING, "trail status service unavailable"))
+        issues.append(_issue(trail, "DATA_UNAVAILABLE", Severity.WARNING, "אין מידע עדכני על סגירות והתראות"))
 
     # --- weather ---
     if weather is None or weather.status in ("unavailable", "out_of_range"):
         why = (
-            "forecast beyond 16 days"
+            "אין תחזית: התאריך רחוק מ-16 ימים"
             if weather and weather.status == "out_of_range"
-            else "forecast unavailable"
+            else "אין תחזית מזג אוויר"
         )
         issues.append(_issue(trail, "DATA_UNAVAILABLE", Severity.WARNING, why))
     else:
@@ -102,16 +103,16 @@ def evaluate(
                     trail,
                     "FLOOD_RISK",
                     Severity.CRITICAL,
-                    f"rain probability {rain}% on a water/canyon trail",
+                    f"סיכוי לגשם {rain}% במסלול מים או ערוץ",
                 )
             )
         elif rain is not None and rain >= T.rain_prob_storm_warning:
-            issues.append(_issue(trail, "STORM", Severity.WARNING, f"rain probability {rain}%"))
+            issues.append(_issue(trail, "STORM", Severity.WARNING, f"סיכוי לגשם {rain}%"))
         gust = weather.wind_gust_max_kmh
         if gust is not None and gust >= T.gust_critical_kmh:
-            issues.append(_issue(trail, "STORM", Severity.CRITICAL, f"wind gusts up to {gust:.0f} km/h"))
+            issues.append(_issue(trail, "STORM", Severity.CRITICAL, f"משבי רוח עד {gust:.0f} קמ״ש"))
         elif gust is not None and gust >= T.gust_warning_kmh:
-            issues.append(_issue(trail, "STORM", Severity.WARNING, f"wind gusts up to {gust:.0f} km/h"))
+            issues.append(_issue(trail, "STORM", Severity.WARNING, f"משבי רוח עד {gust:.0f} קמ״ש"))
         heat = weather.apparent_temp_max_c
         if heat is not None and end.hour >= T.heat_hour and not is_water:
             if heat >= T.heat_critical_c:
@@ -120,22 +121,22 @@ def evaluate(
                         trail,
                         "HEAT",
                         Severity.CRITICAL,
-                        f"apparent max {heat:.0f}°C, hiking until {end:%H:%M}",
+                        f"עומס חום של {heat:.0f}°C, והליכה עד {end:%H:%M}",
                     )
                 )
             elif heat >= T.heat_warning_c:
-                issues.append(_issue(trail, "HEAT", Severity.WARNING, f"apparent max {heat:.0f}°C"))
+                issues.append(_issue(trail, "HEAT", Severity.WARNING, f"עומס חום של {heat:.0f}°C"))
         if weather.sunset is not None:
             latest_end = (weather.sunset - timedelta(minutes=T.sunset_buffer_min)).time()
-            if end > latest_end or end < start:  # end < start: the hike would run past midnight
-                issues.append(
-                    _issue(
-                        trail,
-                        "INSUFFICIENT_DAYLIGHT",
-                        Severity.CRITICAL,
-                        f"ends {end:%H:%M}, sunset {weather.sunset:%H:%M}",
-                    )
+            if end < start:  # the outing would run past midnight: not a day hike at all
+                why = (
+                    f"ארוך מדי ליום אחד ({trail.length_km:.0f} ק״מ): "
+                    f"גם ביציאה ב-{start:%H:%M} לא מסיימים באותו יום"
                 )
+                issues.append(_issue(trail, "INSUFFICIENT_DAYLIGHT", Severity.CRITICAL, why))
+            elif end > latest_end:
+                why = f"הסיום ב-{end:%H:%M}, קרוב מדי לשקיעה ב-{weather.sunset:%H:%M}"
+                issues.append(_issue(trail, "INSUFFICIENT_DAYLIGHT", Severity.CRITICAL, why))
 
     # --- group fit ---
     g = request.group
@@ -146,7 +147,7 @@ def evaluate(
                     trail,
                     "DIFFICULTY_MISMATCH",
                     Severity.CRITICAL,
-                    f"hard trail with a {g.min_child_age}-year-old",
+                    f"מסלול קשה לילד בן {g.min_child_age}",
                 )
             )
         elif trail.length_km > T.long_for_kids_km:
@@ -155,7 +156,7 @@ def evaluate(
                     trail,
                     "DIFFICULTY_MISMATCH",
                     Severity.WARNING,
-                    f"{trail.length_km:.1f} km with young children",
+                    f"{trail.length_km:.1f} ק״מ עם ילדים קטנים",
                 )
             )
     return issues
@@ -209,7 +210,7 @@ def assess(
         if not any(i.severity is Severity.CRITICAL for i in retry):
             # Keep the reason visible: the presenter tells the user why the start moved.
             moved = [
-                _issue(trail, i.code, Severity.INFO, f"start moved to {earlier:%H:%M}: {i.evidence}")
+                _issue(trail, i.code, Severity.INFO, f"היציאה הוקדמה ל-{earlier:%H:%M}: {i.evidence}")
                 for i in critical
             ]
             return result(True, earlier, [*moved, *retry])

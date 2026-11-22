@@ -1,12 +1,12 @@
 {
   "name": "everything_closed",
-  "description": "Region-wide fire closure; tests the safe_fallback after 3 attempts.",
+  "description": "סגירה אזורית בגלל שריפות: בודק מה קורה כשאין אף מסלול בטוח.",
   "closures": [
     {
       "match": [
         "*"
       ],
-      "reason": "Region-wide closure due to wildfire risk"
+      "reason": "סגירה אזורית בגלל סכנת שריפות"
     }
   ],
   "alerts": [
@@ -16,7 +16,7 @@
       "trail_match": [],
       "kind": "fire",
       "severity": "critical",
-      "message": "Extreme fire risk: all nature reserves in the north are closed"
+      "message": "סכנת שריפות קיצונית: כל שמורות הטבע בצפון סגורות"
     }
   ],
   "crowding": []

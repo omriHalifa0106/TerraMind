@@ -1,6 +1,6 @@
 {
   "name": "normal",
-  "description": "All trails open, no alerts.",
+  "description": "כל המסלולים פתוחים, אין התראות.",
   "closures": [],
   "alerts": [],
   "crowding": []

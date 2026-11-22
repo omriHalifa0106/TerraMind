@@ -1,13 +1,13 @@
 {
   "name": "kziv_closed",
-  "description": "Nahal Kziv is closed for maintenance; tests the trail-level veto loop.",
+  "description": "נחל כזיב סגור לתחזוקה: בודק פסילה של מסלול בודד וחיפוש חלופה.",
   "closures": [
     {
       "match": [
         "כזיב",
         "kziv"
       ],
-      "reason": "Closed for trail maintenance by the nature reserve authority"
+      "reason": "סגור לעבודות תחזוקה של רשות הטבע והגנים"
     }
   ],
   "alerts": [
@@ -20,7 +20,7 @@
       ],
       "kind": "maintenance",
       "severity": "critical",
-      "message": "Nahal Kziv trail closed until further notice"
+      "message": "שביל נחל כזיב סגור עד להודעה חדשה"
     }
   ],
   "crowding": []

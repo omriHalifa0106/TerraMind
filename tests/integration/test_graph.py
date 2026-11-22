@@ -123,7 +123,7 @@ async def test_late_start_is_moved_earlier_by_the_rules(rt: AppRuntime) -> None:
     plan = v["final"].plan
     assert plan is not None and plan.start_time == time(6, 35)  # sunrise 06:20 + 15 minutes
     assert plan.end_time <= time(15, 40)  # sunset 16:40 minus the 60-minute buffer
-    assert any("start moved to 06:35" in n for n in v["final"].safety_notes)
+    assert any("היציאה הוקדמה ל-06:35" in n for n in v["final"].safety_notes)
 
 
 async def test_agent_2_runs_the_model_tool_calls_and_enforces_exclusions(rt: AppRuntime) -> None:

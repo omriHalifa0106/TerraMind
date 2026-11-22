@@ -21,6 +21,7 @@ from sse_starlette.sse import EventSourceResponse
 from ingestion import alerts_ingest
 from terramind.api.sse import stream_turn
 from terramind.config import get_settings
+from terramind.db import DatabaseSetupError, connect
 from terramind.runtime import AppRuntime, open_runtime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -106,6 +107,39 @@ async def set_scenario(name: str) -> dict[str, Any]:
         logging.getLogger("terramind.api").warning("alerts ingestion after scenario switch failed: %s", exc)
         return {**data, "ingested": False, "detail": f"{type(exc).__name__}: {exc}"[:300]}
     return {**data, "ingested": True, "rows": rows}
+
+
+PIPELINE_STATUS = """
+SELECT DISTINCT ON (source) source, status, rows_written, finished_at, detail,
+       (SELECT max(finished_at) FROM ingestion_runs g
+        WHERE g.source = r.source AND g.status IN ('ok', 'partial')) AS last_good_at
+FROM ingestion_runs r
+WHERE finished_at IS NOT NULL
+ORDER BY source, finished_at DESC
+"""
+
+
+@app.get("/pipeline")
+async def pipeline_status() -> dict[str, Any]:
+    """Freshness of the stored weather/alerts data (last run of each pipeline job), for the UI."""
+    try:
+        conn = await connect(get_settings().database_url, connect_timeout=3)
+    except DatabaseSetupError as exc:
+        raise HTTPException(503, str(exc)) from exc
+    try:
+        rows = await conn.fetch(PIPELINE_STATUS)
+    finally:
+        await conn.close()
+    return {
+        r["source"]: {
+            "last_status": r["status"],
+            "last_run_at": r["finished_at"].isoformat(),
+            "last_good_at": r["last_good_at"].isoformat() if r["last_good_at"] else None,
+            "rows": r["rows_written"],
+            "detail": r["detail"],
+        }
+        for r in rows
+    }
 
 
 @app.get("/health")

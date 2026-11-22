@@ -1,4 +1,4 @@
-import type { Health, TrailFeature } from "./types";
+import type { Health, PipelineStatus, TrailFeature } from "./types";
 
 async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
   const resp = await fetch(url, init);
@@ -8,6 +8,7 @@ async function getJson<T>(url: string, init?: RequestInit): Promise<T> {
 
 export const api = {
   health: () => getJson<Health>("/health"),
+  pipeline: () => getJson<PipelineStatus>("/pipeline"),
 
   /** Cached: the map asks for the same trail several times (veto layer, chosen layer). */
   trail: (() => {

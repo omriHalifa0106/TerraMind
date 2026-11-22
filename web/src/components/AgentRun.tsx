@@ -226,7 +226,13 @@ function body(name: AgentName, t: Turn): ReactNode {
     case "catalog_search":
       return <SearchLanes t={t} />;
     case "enrichment":
-      return <SafetyBoard candidates={t.candidates} running={t.agents.enrichment.status === "run"} />;
+      return (
+        <SafetyBoard
+          candidates={t.candidates}
+          running={t.agents.enrichment.status === "run"}
+          finished={t.agents.enrichment.status === "done" || t.status !== "running"}
+        />
+      );
     case "route_planner":
       if (!t.plan) return <Skeleton lines={3} />;
       return (
@@ -306,42 +312,51 @@ function SearchLanes({ t }: { t: Turn }) {
 }
 
 type Tone = "ok" | "warn" | "bad" | "pending";
-const WEATHER_CODES: IssueCode[] = ["HEAT", "STORM", "FLOOD_RISK", "INSUFFICIENT_DAYLIGHT"];
 
+/** Three checks per trail, each colored only by the issues that belong to it. */
 function checks(a: CandidateAssessment): { label: string; text: string; tone: Tone }[] {
-  const tone = (codes: IssueCode[]): Tone | null => {
-    const hit = a.issues.filter((i) => codes.includes(i.code));
+  const worst = (codes: IssueCode[]): Tone | null => {
+    const hit = a.issues.filter((i) => codes.includes(i.code) && i.severity !== "info");
     if (hit.some((i) => i.severity === "critical")) return "bad";
     return hit.length ? "warn" : null;
   };
+  // FLOOD_RISK comes from a flood alert or from the rain forecast: credit the right check.
+  const floodAlert = a.alerts.some((x) => x.kind === "flood");
   const w = a.weather;
   const wOk = w && (w.status === "ok" || w.status === "cached");
   const s = a.trail_status;
-  return [
+  const known = s && s.status === "ok";
+  const alertTone: Tone = a.alerts.length === 0 ? "ok" : (worst(["FLOOD_RISK", "CLOSED"]) ?? "warn");
+  const list = [
     {
       label: "מזג אוויר",
       text: wOk ? `${w.temp_max_c ?? "?"}° · גשם ${w.precip_prob_max_pct ?? "?"}%` : "אין תחזית",
-      tone: tone(WEATHER_CODES) ?? (wOk ? "ok" : "warn"),
+      tone: worst(floodAlert ? ["HEAT", "STORM"] : ["HEAT", "STORM", "FLOOD_RISK"]) ?? (wOk ? "ok" : "warn"),
     },
     {
       label: "סגירות",
-      text: !s || s.status !== "ok" ? "לא ידוע" : s.is_open ? (s.crowd_level === "high" ? "פתוח · עמוס" : "פתוח") : "סגור",
-      tone: tone(["CLOSED", "CROWDED"]) ?? (!s || s.status !== "ok" ? "warn" : "ok"),
+      text: !known ? "לא ידוע" : s.is_open ? (s.crowd_level === "high" ? "פתוח · עמוס" : "פתוח") : "סגור",
+      tone: (!known ? "warn" : !s.is_open ? "bad" : s.crowd_level === "high" ? "warn" : "ok") as Tone,
     },
     {
       label: "התראות",
       text: a.alerts.length ? `${a.alerts.length} פעילות` : "אין",
-      tone: a.alerts.length ? "warn" : "ok",
+      tone: alertTone,
     },
   ];
+  const daylight = worst(["INSUFFICIENT_DAYLIGHT"]);
+  if (daylight) list.push({ label: "אור יום", text: "לא מספיק אור יום", tone: daylight });
+  return list;
 }
 
 /** Agent 3: every candidate gets three checks, then a verdict decided by fixed rules. */
-function SafetyBoard({ candidates, running }: { candidates: Candidate[]; running: boolean }) {
+function SafetyBoard({ candidates, running, finished }: { candidates: Candidate[]; running: boolean; finished: boolean }) {
   if (candidates.length === 0) return <Skeleton />;
+  const skipped = finished ? candidates.filter((c) => !c.assessment) : [];
   return (
+    <>
     <ul className="safety">
-      {candidates.map((c, i) => {
+      {candidates.filter((c) => !skipped.includes(c)).map((c, i) => {
         const a = c.assessment;
         const verdict = !a ? "pending" : a.approved ? "ok" : "bad";
         const reasons = a?.issues.filter((x) => x.severity === "critical").map((x) => x.evidence) ?? [];
@@ -365,5 +380,12 @@ function SafetyBoard({ candidates, running }: { candidates: Candidate[]; running
         );
       })}
     </ul>
+    {skipped.length > 0 && (
+      <p className="skipped">
+        לא נבדקו ({skipped.length}): {skipped.map((c) => c.name).join(", ")}. השומר בודק רק את{" "}
+        המועמדים המובילים בכל סבב.
+      </p>
+    )}
+    </>
   );
 }

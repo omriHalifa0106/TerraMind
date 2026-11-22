@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { api } from "./api/client";
 import type { Health } from "./api/types";
 import { Chat } from "./components/Chat";
+import { DataFreshness } from "./components/DataFreshness";
 import { Logo, Wordmark } from "./components/icons";
 import { TrailMap } from "./components/TrailMap";
 import { useChat, vetoedTrails } from "./hooks/useChat";
@@ -61,6 +62,7 @@ export function App() {
           <span className="tagline">מתכנן מסלולים עם 5 סוכנים · גליל, מירון, גולן</span>
         </div>
         <div className="controls">
+          <DataFreshness refreshKey={`${state.busy}-${scenarios.current}`} />
           {Object.keys(scenarios.options).length > 0 && (
             <label className="scenario">
               <span>תרחיש בדיקה</span>

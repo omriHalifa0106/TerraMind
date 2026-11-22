@@ -15,6 +15,7 @@ export default defineConfig({
       "/trails": API,
       "/scenarios": API,
       "/health": API,
+      "/pipeline": API,
     },
   },
 });

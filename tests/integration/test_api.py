@@ -53,4 +53,6 @@ async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
             assert (await c.get("/trails/nope/geojson")).status_code == 404
             health = (await c.get("/health")).json()
             assert sorted(health["mcp_servers"]) == ["alerts", "gis", "knowledge", "weather"]
+            fresh = (await c.get("/pipeline")).json()  # set_scenario above ran the alerts pipeline
+            assert fresh["alerts"]["last_status"] == "ok" and fresh["alerts"]["last_good_at"]
     await set_scenario("normal")

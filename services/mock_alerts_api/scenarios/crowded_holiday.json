@@ -1,6 +1,6 @@
 {
   "name": "crowded_holiday",
-  "description": "Holiday crowding on popular water trails; tests soft (warning) issues.",
+  "description": "עומס חג במסלולי מים פופולריים: בודק אזהרות רכות.",
   "closures": [],
   "alerts": [],
   "crowding": [

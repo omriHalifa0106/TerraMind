@@ -92,7 +92,16 @@ export interface CandidateAssessment {
   issues: SafetyIssue[];
   weather: WeatherSnapshot | null;
   trail_status: TrailStatus | null;
-  alerts: unknown[];
+  alerts: TrailAlert[];
+}
+
+export interface TrailAlert {
+  alert_id: string;
+  trail_id: string | null;
+  region: string | null;
+  kind: "closure" | "flood" | "fire" | "crowding" | "military" | "maintenance";
+  severity: Severity;
+  message: string;
 }
 
 export interface ToolCall {
@@ -149,3 +158,13 @@ export interface TrailFeature {
   geometry: GeoJSON.Geometry;
   properties: { trail_id: string; name: string; name_he: string | null };
 }
+
+/** GET /pipeline: the last run of each data pipeline job (ingestion_runs). */
+export interface PipelineRun {
+  last_status: "ok" | "partial" | "failed" | "running";
+  last_run_at: string;
+  last_good_at: string | null;
+  rows: number;
+  detail: string | null;
+}
+export type PipelineStatus = Partial<Record<"weather" | "alerts", PipelineRun>>;

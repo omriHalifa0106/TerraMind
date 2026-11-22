@@ -1,6 +1,6 @@
 {
   "name": "golan_flood_warning",
-  "description": "Flash-flood warning for Golan canyons; tests FLOOD_RISK on water trails.",
+  "description": "אזהרת שיטפונות בערוצי הגולן: בודק פסילה של מסלולי מים.",
   "closures": [],
   "alerts": [
     {
@@ -9,7 +9,7 @@
       "trail_match": [],
       "kind": "flood",
       "severity": "critical",
-      "message": "Flash-flood warning for stream canyons in the Golan Heights"
+      "message": "אזהרת שיטפונות בערוצי הנחלים ברמת הגולן"
     }
   ],
   "crowding": []
