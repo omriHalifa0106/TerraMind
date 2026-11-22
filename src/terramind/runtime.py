@@ -14,6 +14,7 @@ from terramind.graph.builder import compile_graph
 from terramind.graph.state import TerraMindContext, TerraMindState
 from terramind.llm.client import ClaudeLLM
 from terramind.mcp_client.client import McpGateway
+from terramind.observability import configure_langsmith
 
 log = logging.getLogger("terramind.runtime")
 
@@ -30,6 +31,7 @@ async def open_runtime(
     settings: Settings | None = None, gateway: McpGateway | None = None
 ) -> AsyncIterator[AppRuntime]:
     s = settings or get_settings()
+    configure_langsmith(s)
     if not (s.anthropic_auth_token or s.anthropic_api_key):
         log.warning("no ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY: every LLM call will fail")
     async with AsyncExitStack() as stack:

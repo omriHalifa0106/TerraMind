@@ -1,120 +1,321 @@
-# TerraMind
+# TerraMind: מתכנן מסלולי טיול עם חמישה סוכנים
 
-Autonomous multi-agent hiking-route planner for northern Israel (Upper Galilee, Meron, Golan).
-LangGraph orchestration with a safety veto loop, four FastMCP servers, Hybrid Agentic RAG over
-PostGIS + pgvector, Claude via OpenRouter, Postgres memory, SSE streaming and a Leaflet map.
+TerraMind מקבל בקשה חופשית בעברית ("מסלול מים קל בגליל העליון לשבת, עם שני ילדים") ומחזיר מסלול
+ליום טיול: איזה שביל, באילו תחנות עוצרים, מתי יוצאים מהבית ומתי מסיימים, למה דווקא המסלול הזה ומה
+נפסל בדרך ולמה. מאחורי הקלעים עובדים חמישה סוכנים בשרשרת, וכל הנתונים שלהם עוברים דרך ארבעה שרתי MCP.
 
-Full design: [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md). Implementation notes and deviations: [below](#implementation-notes).
+אזור הכיסוי: הגליל העליון, אזור מירון ורמת הגולן (102 שבילים מ-OpenStreetMap, 1,751 נקודות עניין).
 
-## Quick start (Windows / PowerShell)
+## תוכן
 
-Prerequisites: [uv](https://docs.astral.sh/uv/), Docker Desktop, Git. Python 3.12 is installed by uv.
+1. [מה רואים בממשק](#מה-רואים-בממשק)
+2. [הארכיטקטורה בתמונה אחת](#הארכיטקטורה-בתמונה-אחת)
+3. [חמשת הסוכנים](#חמשת-הסוכנים)
+4. [שרתי ה-MCP והכלים](#שרתי-ה-mcp-והכלים)
+5. [בסיס הנתונים](#בסיס-הנתונים)
+6. [צינור הנתונים: מזג אוויר והתראות](#צינור-הנתונים-מזג-אוויר-והתראות)
+7. [זמני נסיעה: OSRM](#זמני-נסיעה-osrm)
+8. [ניטור: LangSmith](#ניטור-langsmith)
+9. [הרצה](#הרצה)
+10. [תרחישי בדיקה](#תרחישי-בדיקה)
+11. [בדיקות ואיכות קוד](#בדיקות-ואיכות-קוד)
+12. [מבנה התיקיות](#מבנה-התיקיות)
+13. [החלטות תכנון ומגבלות](#החלטות-תכנון-ומגבלות)
+
+## מה רואים בממשק
+
+הממשק (TypeScript + React + Leaflet, בתיקייה `web/`) הוא צ'אט לצד מפה:
+
+- **"יוצאים מ"** מעל תיבת הטקסט: מיקום הדפדפן או כתובת (חיפוש עם השלמה). בלי נקודת יציאה אין זמן נסיעה.
+- **כל הודעה מפעילה את חמשת הסוכנים מחדש**, ורואים אותם עובדים בזמן אמת: שרשרת של חמש דמויות
+  ("המנתח", "החוקר", "השומר", "המתכנן", "המסביר") עם שעון חי, וקו שמראה איך המידע עובר מסוכן לסוכן.
+- **כרטיס לכל סוכן**: מה הוא קיבל, מה הוא עושה עכשיו, באילו כלים השתמש ומה העביר הלאה. למשל הפרמטרים
+  שסוכן 1 חילץ, שני החיפושים של סוכן 2 רצים במקביל, ולוח הבטיחות של סוכן 3 עם שלוש בדיקות לכל מסלול
+  (מזג אוויר, סגירות, התראות) ופסק דין.
+- **התשובה** נכתבת תוך כדי (streaming), ומתחתיה כרטיס המסלול: זמני הליכה ונסיעה ומתי יוצאים.
+- **המפה**: המסלול שנבחר בירוק, מסלולים שנפסלו בקו אדום מקווקו, תחנות ממוספרות, נקודת היציאה ומסלול הנסיעה.
+- **בשורה העליונה**: מתי צינור הנתונים עדכן לאחרונה מזג אוויר והתראות, תרחיש הבדיקה הפעיל ומצב שרתי ה-MCP.
+
+## הארכיטקטורה בתמונה אחת
+
+```mermaid
+flowchart LR
+    UI["דפדפן<br/>React + Leaflet"] -- "POST /chat/stream (SSE)" --> API["FastAPI"]
+    API --> G
+
+    subgraph G["LangGraph: חמישה סוכנים"]
+        A1["1 ניתוח הבקשה"] --> A2["2 חיפוש במאגר<br/>PostGIS + RAG במקביל"]
+        A2 --> A3["3 העשרה ובדיקת בטיחות"]
+        A3 -- "יש מסלול בטוח" --> A4["4 תכנון המסלול"]
+        A3 -- "הכל נפסל: חיפוש רחב יותר (פעם אחת)" --> A2
+        A3 -- "עדיין אין מסלול בטוח" --> A5
+        A4 --> A5["5 הצגת התוצאה"]
+    end
+
+    G -- "MCP (HTTP)" --> GIS["gis-server"]
+    G -- MCP --> KN["knowledge-server"]
+    G -- MCP --> WE["weather-server"]
+    G -- MCP --> AL["alerts-server"]
+
+    GIS --> DB[("PostgreSQL<br/>PostGIS + pgvector")]
+    KN --> DB
+    WE --> DB
+    AL --> DB
+    GIS --> OSRM["OSRM<br/>ניתוב כבישים"]
+    GIS --> NOM["Nominatim<br/>כתובות"]
+
+    PIPE["צינור נתונים<br/>(מתוזמן)"] --> DB
+    PIPE --> OM["Open-Meteo"]
+    PIPE --> MOCK["Mock Alerts API"]
+
+    G -. traces .-> LS["LangSmith"]
+```
+
+שלושה עקרונות מחזיקים את המבנה:
+
+1. **הסוכנים לא ניגשים ישירות למסד הנתונים או לאינטרנט.** כל נתון עובר דרך שרת MCP (`McpGateway`).
+   כל כלי מחזיר שדה `status` (`ok` / `empty` / `error` / `unavailable`) ולא זורק שגיאה לסוכן.
+2. **החלטות בטיחות מתקבלות בקוד דטרמיניסטי** (`src/terramind/safety/rules.py`), לא על ידי ה-LLM.
+   כל פסילה ניתנת לשחזור ומפנה לנתון שגרם לה.
+3. **המספרים מחושבים בקוד.** ה-LLM בוחר ומסביר (איזה מסלול, אילו תחנות, איך לנסח), אבל סדר התחנות,
+   זמני ההליכה והנסיעה ושעות היציאה והסיום מחושבים מנתוני המפה.
+
+כל הודעה היא ריצה אחת של הגרף, בלי זיכרון בין הודעות.
+
+## חמשת הסוכנים
+
+הקוד: `src/terramind/graph/nodes/`. ההנחיות (prompts): `src/terramind/graph/prompts/`. החיבורים בין
+הסוכנים: `graph/builder.py`, וההחלטות לאן ממשיכים: `graph/routing.py`.
+
+### סוכן 1: ניתוח הבקשה (`request_analyst.py`)
+
+- **מקבל:** הטקסט החופשי של המשתמש, ואם נבחרה, גם נקודת היציאה מהממשק.
+- **עושה:** Claude (מודל מהיר, Haiku) הופך את הטקסט ל-`TripRequest` מובנה: אזור, תאריך, שעת יציאה, קושי,
+  סוגי מסלול, הרכב הקבוצה (מבוגרים, ילדים, גיל הצעיר), מגבלות אורך ומשך, ושאילתה סמנטית לחיפוש.
+- **השלמות בקוד:** אם לא נאמר תאריך, ברירת המחדל היא מחר. אם המשתמש ציין שם של שביל, האזור נגזר ממנו
+  (כלי `find_trails_by_name`). נקודת היציאה מהממשק נכנסת כמו שהיא, בלי לעבור דרך ה-LLM.
+- **אם אין אזור:** הסוכן שואל את המשתמש באיזה אזור לטייל, והריצה נעצרת. הוא לא מנחש.
+
+### סוכן 2: חיפוש במאגר, Hybrid RAG (`catalog_search.py`)
+
+- **מקבל:** את ה-`TripRequest`.
+- **עושה:** Claude מקבל שני כלים ובוחר בתור אחד את הארגומנטים לשניהם (tool calling). הקוד מריץ את שתי
+  הקריאות **במקביל** (`asyncio.gather`):
+  - `gis.search_trails`: שאילתה מרחבית ב-PostGIS (אזור, אורך, קושי, תגיות, מרחק מנקודת היציאה).
+  - `knowledge.hybrid_search`: חיפוש RAG בתיאורי שבילים ובטיפים של מטיילים.
+- **איחוד:** שני הדירוגים מאוחדים ב-Reciprocal Rank Fusion: שביל שמתאים גם מרחבית וגם לפי התיאור עולה למעלה.
+- **הגנות:** שבילים שסוכן 3 פסל בסבב קודם תמיד מוחרגים, גם אם המודל "שכח". אם המודל לא ביקש את שני
+  החיפושים, הקוד בונה אותם בעצמו.
+- **סבב שני:** אם סוכן 3 פסל את כל המועמדים, הגרף חוזר לסוכן 2 פעם אחת, עם חיפוש רחב יותר (בלי תגיות,
+  אורך גמיש יותר).
+
+### סוכן 3: העשרת מידע ובדיקת בטיחות (`enrichment.py`, `safety/rules.py`)
+
+- **מקבל:** את חמשת המועמדים המובילים.
+- **עושה:** לכל מועמד, במקביל, שלוש קריאות: תחזית (`weather.get_forecast`), סטטוס השביל
+  (`alerts.get_trail_status`) והתראות פעילות (`alerts.list_active_alerts`).
+- **מחליט בקוד, בלי LLM:** כללים קבועים מאשרים או פוסלים כל מסלול **לפני** שמתכננים אותו:
+
+  | בדיקה | פסילה (critical) | אזהרה (warning) |
+  | --- | --- | --- |
+  | סגירה | שביל סגור, או התראה קריטית מסוג סגירה, שריפה או צבאי | |
+  | שיטפונות | התראת שיטפונות על מסלול מים או ערוץ, או גשם ≥ 60% במסלול מים | התראת שיטפונות על מסלול יבש באזור |
+  | גשם ורוח | משבים ≥ 75 קמ״ש | גשם ≥ 60%, משבים ≥ 50 קמ״ש |
+  | חום | עומס חום ≥ 37°C כשהולכים אחרי 11:00 (לא במסלולי מים) | ≥ 32°C |
+  | אור יום | הסיום פחות משעה לפני השקיעה, או מסלול שלא מסתיים באותו יום | |
+  | התאמה לקבוצה | מסלול קשה עם ילד מתחת לגיל 8 | מעל 8 ק״מ עם ילדים קטנים, עומס צפוי |
+  | חוסר במידע | | אין תחזית או אין סטטוס עדכני (לעולם לא נחשב "בטוח") |
+
+- **תיקון זמן:** אם הבעיה היחידה היא שעה (למשל יציאה מאוחרת שמסתיימת אחרי השקיעה), הכללים מנסים שוב
+  בשעת היציאה הבטוחה המוקדמת ביותר. התיקון נשמר כהערה, כדי שהמשתמש יידע למה השעה זזה.
+
+### סוכן 4: תכנון המסלול (`route_planner.py`)
+
+- **מקבל:** רק מסלולים שסוכן 3 אישר.
+- **עושה:** לשלושת המובילים מביא במקביל את נקודת הסיום ואת נקודות העניין לאורך השביל (PostGIS).
+  Claude (מודל חזק, Sonnet) בוחר את המסלול שהכי מתאים לבקשה ואת התחנות ששוות עצירה, ומנמק.
+- **בקוד:** סדר התחנות לפי המרחק לאורך השביל, זמני הליכה לפי קצב הקבוצה, ושעת הסיום. אם נבחרה נקודת
+  יציאה, זמן הנסיעה מגיע מ-OSRM דרך הכלי `gis.estimate_leg`, ומתוכו מחושבת שעת היציאה מהבית.
+- **הגנה:** אם המודל בחר מסלול שלא אושר, הקוד מחליף אותו במסלול הבטוח המוביל.
+
+### סוכן 5: הצגת התוצאה (`presenter.py`)
+
+- **מקבל:** את כל מה שהסוכנים הקודמים הפיקו: הבקשה, התוכנית, החלופות, כל פסילה עם הראיות שלה, מזג האוויר והטיפים.
+- **עושה:** Claude (Sonnet) כותב את התשובה בשפת המשתמש, והיא נשלחת לדפדפן תוך כדי כתיבה. ההנחיה מתירה
+  רק עובדות מתוך הנתונים, וטיפים מצוטטים לפי מזהה.
+- **"למה זה ולא אחר"** לא מומצא: כל השוואה נבנית מפסילה שסוכן 3 תיעד, עם הנתון שגרם לה.
+- **אם אין מסלול בטוח** (גם אחרי סבב שני), התשובה מסבירה למה, ולא מציעה מסלול מנוחש.
+
+## שרתי ה-MCP והכלים
+
+ארבעה שרתי FastMCP (`mcp_servers/`), כל אחד בתהליך נפרד ובפורט משלו (HTTP, מקומי בלבד):
+
+| שרת | פורט | כלים | מקור הנתונים |
+| --- | --- | --- | --- |
+| `gis` | 8101 | `search_trails`, `find_trails_by_name`, `get_trail_details`, `find_pois_near_trail`, `get_trail_geojson`, `list_regions`, `estimate_leg`, `geocode` | PostGIS, OSRM, Nominatim |
+| `knowledge` | 8102 | `hybrid_search`, `get_trail_notes` | pgvector + חיפוש טקסט מלא |
+| `weather` | 8103 | `get_forecast`, `get_forecast_batch`, `get_daylight` | טבלת `weather_forecasts` (מהצינור), ואם חסר: Open-Meteo |
+| `alerts` | 8104 | `get_trail_status`, `list_active_alerts` | טבלאות `trail_status`, `trail_alerts` (מהצינור) |
+
+**ה-RAG (`knowledge_server/hybrid.py`):** הטקסטים מוטמעים עם `BAAI/bge-m3` (רב-לשוני, עובד גם בעברית)
+ונשמרים ב-pgvector (אינדקס HNSW). כל חיפוש מריץ במקביל חיפוש וקטורי (cosine) וחיפוש טקסט מלא
+(`tsvector`), ומאחד אותם ב-RRF. החישוב של ההטמעה עצמה רץ ב-`asyncio.to_thread`, כדי לא לחסום את השרת.
+
+**הגנות בכל קריאה חיצונית:** timeout מפורש, מספר ניסיונות חוזרים מוגבל, ותוצאה מטיפוס מוגדר במקרה כישלון.
+
+## בסיס הנתונים
+
+PostgreSQL 17 עם PostGIS ו-pgvector, בקונטיינר (`docker compose`, פורט 5433). המיגרציות ב-`db/migrations/`:
+
+| טבלה | מה יש בה | מי כותב | מי קורא |
+| --- | --- | --- | --- |
+| `trails` | 102 שבילים: גיאומטריה, נקודת התחלה, אורך, קושי, תגיות | `ingestion/osm_loader`, `derive_attributes` | gis |
+| `pois` | 1,751 נקודות עניין (מעיינות, תצפיות, חורבות, חניות) | `osm_loader` | gis |
+| `knowledge_chunks` | תיאורים וטיפים + הטמעה (vector 1024) + `tsvector` | `seed_knowledge` | knowledge |
+| `weather_forecasts` | תחזית יומית לכל משבצת של כקילומטר, 16 ימים קדימה | צינור הנתונים | weather |
+| `trail_status` | פתוח או סגור, ועומס צפוי, לכל שביל | צינור הנתונים | alerts |
+| `trail_alerts` | התראות פעילות (שיטפונות, שריפה, תחזוקה...) | צינור הנתונים | alerts |
+| `ingestion_runs` | יומן של כל ריצת צינור: מתי, כמה שורות, הצלחה או כישלון | צינור הנתונים | API (`/pipeline`) |
+
+## צינור הנתונים: מזג אוויר והתראות
+
+הקוד: `ingestion/pipeline.py`, `weather_ingest.py`, `alerts_ingest.py`. הצינור רץ כתהליך נפרד
+(`scripts.dev` ו-docker compose מפעילים אותו לבד):
+
+- **מזג אוויר, כל שעה:** נקודות ההתחלה של כל השבילים מקובצות למשבצות של כקילומטר (92 משבצות), ונשלחות
+  ל-Open-Meteo בכמה בקשות בודדות. כל בקשה מחזירה 16 ימים לעד 50 נקודות. התוצאה, כ-1,500 שורות, נשמרת
+  ב-`weather_forecasts`.
+- **התראות, כל 10 דקות:** סטטוס והתראות לכל שביל מה-Mock Alerts API, והתראות אזוריות פעם אחת. הכל
+  מוחלף בטרנזקציה אחת, כך שקורא אף פעם לא רואה חצי ריצה.
+- **אמינות:**
+  - כל ריצה נרשמת ב-`ingestion_runs`.
+  - ריצה שנכשלה לא מוחקת את הנתונים הקיימים, ומנוסה שוב אחרי 30 שניות.
+  - שתי ריצות התראות לא מתנגשות, בזכות advisory lock.
+- **איך השרתים משתמשים בנתונים:**
+  - **weather:** קורא מהטבלה. אם חסרה שורה או שהיא ישנה מ-6 שעות, הוא מושך את התחזית מ-Open-Meteo ושומר אותה.
+  - **alerts:** קורא מהטבלאות. אם הריצה המוצלחת האחרונה ישנה משעה, התשובה היא `unavailable`. כללי
+    הבטיחות מפרשים את זה כאזהרה, ולא כ"בטוח".
+- **החלפת תרחיש בדיקה** בממשק מפעילה מיד ריצה של צינור ההתראות.
+
+הרצה ידנית: `uv run python -m ingestion.pipeline --once` (או `--once alerts` / `--once weather`).
+
+## זמני נסיעה: OSRM
+
+- **OSRM:** מנוע ניתוב כבישים, רץ בקונטיינר מקומי. בהפעלה הראשונה (`docker compose up -d osrm`) הוא
+  מוריד את מפת ישראל מ-Geofabrik ומעבד אותה פעם אחת, כמה דקות, לתוך ה-volume `osrm-data`.
+- **שימוש:** הכלי `gis.estimate_leg(mode="drive")` מחזיר זמן, מרחק וגיאומטריה של המסלול בכביש. אם OSRM
+  לא זמין, הוא מחזיר הערכה לפי קו אוויר כפול מקדם עיקוף, והשדה `method` אומר איזו מהשתיים התקבלה.
+- **כתובות:** הכלי `gis.geocode` הופך כתובת לקואורדינטות דרך Nominatim של OpenStreetMap, לפי מדיניות
+  השימוש שלו: עד בקשה בשנייה, תוצאות במטמון, ובלי פרטים מזהים.
+
+## ניטור: LangSmith
+
+כל ריצה של הגרף נשלחת ל-LangSmith כ-trace אחד בשם `terramind`. בתוכו כל אחד מחמשת הסוכנים, כל קריאה
+ל-Claude (עם ההנחיה והתשובה) וזמני הריצה. כדי להפעיל, מגדירים ב-`.env`:
+
+```
+LANGSMITH_TRACING=true
+LANGSMITH_API_KEY=lsv2_...      # מפתח אמיתי מ-smith.langchain.com
+LANGSMITH_PROJECT=terramind-dev
+```
+
+LangSmith קורא את ההגדרות ממשתני הסביבה של התהליך, ולכן `terramind/observability` מעביר אותן לשם
+כשהשרת עולה. בלי מפתח אמיתי הניטור כבוי, ונכתבת על כך אזהרה בלוג. הבדיקות אף פעם לא שולחות traces.
+
+## הרצה
+
+דרישות: [uv](https://docs.astral.sh/uv/), Docker Desktop, Node.js 20+, ומפתח ל-Anthropic API.
 
 ```powershell
-cd C:\projects\terramind
-copy .env.example .env                   # then set ONE LLM provider (Anthropic/gateway or OpenRouter) in .env
-uv sync --extra embeddings               # real bge-m3 embeddings (pulls torch, a few GB)
-docker compose up -d db                  # PostgreSQL 17 + pgvector + PostGIS, on host port 5433
+copy .env.example .env                       # ולמלא: ANTHROPIC_AUTH_TOKEN (ואם יש, LANGSMITH_API_KEY)
+uv sync --extra embeddings                   # תלויות Python, כולל bge-m3 (מוריד torch, כמה GB)
+docker compose up -d db osrm                 # מסד הנתונים + OSRM (בפעם הראשונה: הכנת המפה, כמה דקות)
 
-# Run these one at a time: each must succeed before the next.
+# טעינת נתונים, פעם אחת, לפי הסדר:
 uv run python -m scripts.migrate
-uv run python -m ingestion.osm_loader    # Overpass download (tries 3 public mirrors), cached in ingestion/cache/
-uv run python -m ingestion.derive_attributes
-uv run python -m ingestion.seed_knowledge  # first run downloads BAAI/bge-m3 (~2 GB)
+uv run python -m ingestion.osm_loader        # שבילים ונקודות עניין מ-OpenStreetMap
+uv run python -m ingestion.derive_attributes # קושי, תגיות, מעגליות
+uv run python -m ingestion.seed_knowledge    # תיאורים וטיפים ל-RAG (בפעם הראשונה מוריד את bge-m3)
+uv run python -m ingestion.pipeline --once   # מזג אוויר והתראות
 
-uv run python -m scripts.smoke_llm       # checks the OpenRouter key and model slugs
-uv run python -m scripts.dev             # mock alerts + 4 MCP servers + API -> http://127.0.0.1:8000
+# הממשק:
+cd web; npm install; npm run build; cd ..
+
+# כל השירותים בטרמינל אחד (Mock Alerts, 4 שרתי MCP, צינור הנתונים, API):
+uv run python -m scripts.dev                 # -> http://127.0.0.1:8000
 ```
 
-**LLM provider.** With `ANTHROPIC_AUTH_TOKEN` (and optionally `ANTHROPIC_BASE_URL` for a gateway such
-as OneProvider) the native Anthropic API is used, with prompt caching. Otherwise `OPENROUTER_API_KEY`
-is used, with OpenRouter's server-side model fallbacks. `uv run python -m scripts.smoke_llm` checks
-whichever is configured, including the model IDs.
+לפיתוח של הממשק עם טעינה חיה: `cd web; npm run dev`, ואז http://localhost:5174 (ה-API מועבר אוטומטית
+לפורט 8000). אם `scripts.dev` אומר שפורט תפוס, כנראה שהרצה קודמת עדיין פתוחה בטרמינל אחר: עוצרים אותה
+ב-Ctrl+C.
 
-No API key yet? Leave both empty: the system falls back to the offline
-`HeuristicLLM` (keyword rules), so the whole pipeline, map and safety loop still run.
-For a fast setup without torch, set `EMBEDDING_BACKEND=hash` (lexical only, demo quality).
+אפשר גם להריץ את הכל ב-Docker: `docker compose --profile full up -d`.
 
-Terminal-only demo (no servers to start, only the DB):
+**הגדרות** (כולן ב-`.env`, דרך `pydantic-settings`. אין מפתחות או שמות מודלים בקוד):
+`ANTHROPIC_MODEL_SMART` / `ANTHROPIC_MODEL_FAST` (המודלים), `WEATHER_INGEST_INTERVAL_MIN`,
+`ALERTS_INGEST_INTERVAL_MIN`, `ALERTS_MAX_AGE_MIN`, `WEATHER_MAX_AGE_H`, `OSRM_URL`, `CANDIDATES_TO_CHECK`,
+`MAX_SEARCH_ROUNDS` ועוד. כל השדות מתועדים ב-`src/terramind/config.py`.
 
-```powershell
-uv run python -m scripts.demo_cli "אני רוצה לטייל בנחל כזיב מחר, מסלול מים" --scenario kziv_closed
-```
+## תרחישי בדיקה
 
-## Demo scenarios (Mock Alerts API)
+ה-Mock Alerts API (`services/mock_alerts_api/`) מדמה מקור התראות, ואפשר להחליף בו תרחיש מהממשק
+(רשימה בשורה העליונה):
 
-Switch from the UI dropdown, `POST /scenarios/{name}`, or `--scenario` in the CLI/evals.
-
-| Scenario | What it tests |
+| תרחיש | מה הוא בודק |
 | --- | --- |
-| `normal` | Everything open |
-| `kziv_closed` | Trail-level veto: Nahal Kziv closed, the graph loops back and picks another trail, then explains why |
-| `golan_flood_warning` | FLOOD_RISK veto on Golan water/canyon trails |
-| `crowded_holiday` | Soft issue (warning only) on popular water trails |
-| `everything_closed` | Three vetoes, then `safe_fallback`: no plan rather than a guessed one |
+| `normal` | הכל פתוח, אין התראות |
+| `kziv_closed` | שביל בודד סגור: נחל כזיב נפסל, והתשובה מסבירה למה ומציעה חלופה |
+| `golan_flood_warning` | אזהרת שיטפונות בגולן: מסלולי מים נפסלים, מסלולים יבשים מקבלים אזהרה |
+| `crowded_holiday` | עומס חג: אזהרות רכות בלבד, בלי פסילה |
+| `everything_closed` | הכל סגור: אחרי שני סבבי חיפוש אין מסלול בטוח, והתשובה מסבירה למה במקום לנחש |
 
-## Tests, lint, evals
+## בדיקות ואיכות קוד
 
 ```powershell
-docker compose exec db createdb -U terramind terramind_test
+docker compose exec db createdb -U terramind terramind_test      # פעם אחת
 $env:TERRAMIND_TEST_DATABASE_URL = "postgresql://terramind:terramind@localhost:5433/terramind_test"
-uv run pytest                      # 40 tests: unit + integration (the test DB gets a synthetic fixture)
-uv run ruff check . ; uv run mypy src mcp_servers services ingestion evals scripts
-
-uv run python -m evals.run_evals            # scenario suite: tool accuracy, safety loop, grounding
-uv run python -m evals.run_evals --judge    # + LLM-as-a-judge faithfulness (needs OpenRouter)
-uv run python -m evals.run_evals --langsmith  # record as a LangSmith experiment
+uv run pytest                                                    # 51 בדיקות
+uv run ruff check . ; uv run mypy src mcp_servers services ingestion scripts
+cd web; npm run typecheck
 ```
 
-Without `TERRAMIND_TEST_DATABASE_URL` the database tests are skipped and only unit tests run.
+- **`tests/unit`** (בלי מסד נתונים ובלי רשת): כללי הבטיחות, ההחלטות בין הסוכנים, פענוח Open-Meteo,
+  בניית התוכנית, מנגנון הפלט המובנה.
+- **`tests/integration`**: שרתי ה-MCP מול מסד נתונים אמיתי, צינור הנתונים, ריצה מלאה של חמשת הסוכנים
+  וה-API עם SSE.
+- **הבדיקות לא קוראות ל-LLM אמיתי:** הן משתמשות ב-`tests/fakes.py:FakeLLM`. שירותים חיצוניים
+  (Open-Meteo, OSRM, Nominatim) מדומים עם `respx`.
 
-## Layout
+Python 3.12, טיפוסים מלאים (`mypy --strict`), `ruff`, ו-TypeScript במצב `strict`.
+
+## מבנה התיקיות
 
 ```
-src/terramind/        config, schemas (Pydantic), llm (router, OpenRouter client, heuristic),
-                      graph (state, routing, nodes, builder), safety/rules.py, mcp_client (gateway),
-                      api (FastAPI + SSE), runtime.py, regions.py, text.py, geo.py, embeddings.py
-mcp_servers/          gis_server, knowledge_server, weather_server, alerts_server (FastMCP, HTTP)
-services/mock_alerts_api/   FastAPI + scenarios/*.json
-ingestion/            osm_loader, derive_attributes, seed_knowledge, data/tips.jsonl
-evals/                datasets/scenarios.yaml, evaluators, run_evals.py, harness.py
-frontend/             index.html, app.js (Leaflet + SSE reader), styles.css
-db/migrations/        plain SQL, applied by scripts/migrate.py
-tests/                unit/, integration/, fixtures/overpass_sample.json (synthetic)
+src/terramind/
+  graph/            הגרף: nodes/ (חמשת הסוכנים), prompts/, builder.py, routing.py, state.py
+  safety/rules.py   כללי הבטיחות הדטרמיניסטיים
+  schemas/          מודלים של Pydantic (frozen), משותפים לסוכנים ולשרתים
+  llm/              הלקוח של Claude (פלט מובנה, קריאות כלים, streaming) ובחירת מודל לכל סוכן
+  mcp_client/       McpGateway: הדרך היחידה של הסוכנים לנתונים
+  api/              FastAPI: /chat/stream (SSE), /trails, /geocode, /pipeline, /scenarios, /health
+  observability/    הפעלת LangSmith
+mcp_servers/        gis, knowledge, weather, alerts (+ common: חיבור למסד נתונים, לקוח HTTP)
+ingestion/          טעינת OSM, תכונות שבילים, ידע ל-RAG, וצינור הנתונים (pipeline.py)
+services/           Mock Alerts API ותרחישי הבדיקה
+db/migrations/      SQL: 001 שבילים, 002 ידע, 003 צינור נתונים
+web/                הממשק (React + TypeScript + Leaflet)
+scripts/            migrate, dev (הרצת הכל), run_api
+tests/              unit/, integration/, fakes.py, harness.py
 ```
 
-## Implementation notes
+## החלטות תכנון ומגבלות
 
-What was built as designed, and where the code deliberately differs from the design doc:
-
-- **No `langchain-mcp-adapters`.** Its current release requires `mcp<2`, while FastMCP 4 requires
-  `mcp>=2`, so the two cannot be installed together. `mcp_client/client.py` is a thin gateway on
-  `fastmcp.Client` instead: typed calls, per-call timeouts, failures returned as data, a per-run call
-  log (used by the evals) and LangChain tools generated from the MCP schemas for native tool calling.
-- **Supervisor = Haiku once per turn + pure-function routing.** The LLM classifies intent; every
-  later decision is a unit-tested edge function in `graph/routing.py`.
-- **Safety: rules first, LLM second.** `safety/rules.py` decides vetoes deterministically
-  (closures, alerts, rain/flood, wind, heat, daylight, group fit). The Sonnet critic only reviews
-  plans the rules accepted and can only add warnings. That keeps the veto loop reproducible for evals.
-- **Timing vs trail vetoes.** A daylight/heat veto re-plans the same trail 90 minutes earlier
-  (planner loop); a closure/flood veto excludes the trail and searches again (researcher loop).
-  Max 3 attempts, then `safe_fallback`.
-- **Planner: the model chooses, code computes.** Sonnet picks the trail and stops (with tool calls),
-  but every time and distance is computed from the map data, so numbers in the answer are grounded.
-- **Trade-offs are derived, not generated.** "Why B and not A" comes from the critic's verdicts
-  (with the tool evidence), and the explainer phrases them.
-- **Added tool `gis.find_trails_by_name`.** "Hike Nahal Kziv tomorrow" names a trail but no region;
-  intake now infers the region from the trail instead of asking.
-- **Memory.** Conversation in `AsyncPostgresSaver` (per thread), preferences in `AsyncPostgresStore`
-  (per user, across threads). Domain models are registered with the checkpoint serializer.
-
-## Known limitations
-
-- Travel time is straight-line distance x a detour factor (no routing engine yet).
-- Difficulty is a length heuristic until elevation (SRTM) is added.
-- `ingestion/data/tips.jsonl` holds 25 short descriptions written for this project. Review them
-  before relying on them, and add your own.
-- Flash-flood risk is only partly visible in point forecasts (rain upstream). The Mock alerts and a
-  conservative rule for water/canyon trails cover the MVP.
-- `scripts/run_api.py` runs uvicorn on a SelectorEventLoop because psycopg (used by the Postgres
-  checkpointer) does not support Windows' default ProactorEventLoop.
+- **למה כללים ולא LLM לבטיחות:** פסילה צריכה להיות עקבית וניתנת להסבר. אותו מצב תמיד יוביל לאותה
+  החלטה, ואפשר להצביע על הנתון שגרם לה. ה-LLM מסביר את ההחלטה, אבל לא מקבל אותה.
+- **למה צינור נתונים ולא קריאה ישירה בכל בקשה:** הנתונים זמינים גם כשהמקור איטי או נופל, בקשה אחת
+  ל-Open-Meteo מכסה את כל השבילים, ואפשר לראות מתי כל נתון נאסף.
+- **התראות וסגירות מגיעות מ-Mock:** עדיין לא נמצא מקור ציבורי ופתוח להתראות של רשות הטבע והגנים. הצינור
+  בנוי כך שאפשר להחליף את המקור בלי לגעת בסוכנים או בשרתים.
+- **שבילים ארוכים:** חלק מהשבילים ב-OSM הם שבילים של כמה ימים (שביל הגולן, סובב כנרת). סוכן 3 פוסל אותם
+  כי הם "ארוכים מדי ליום אחד", אבל הם עדיין מגיעים כמועמדים מסוכן 2.
+- **Nominatim** הוא שירות ציבורי עם מגבלת קצב. לשימוש רחב צריך שרת גיאוקודינג עצמאי.

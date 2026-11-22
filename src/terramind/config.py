@@ -34,6 +34,12 @@ class Settings(BaseSettings):
     llm_timeout_s: float = 45.0
     llm_max_retries: int = 2
 
+    # --- observability: LangSmith traces of every graph run ---
+    langsmith_tracing: bool = False
+    langsmith_api_key: str = ""
+    langsmith_project: str = "terramind-dev"
+    langsmith_endpoint: str | None = None  # e.g. the EU region; default is the US endpoint
+
     # --- embeddings ---
     embedding_model: str = "BAAI/bge-m3"
     embedding_dim: int = 1024

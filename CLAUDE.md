@@ -22,9 +22,10 @@ Anything not in the spec is removed, not kept "just in case".
   volume). gis-server `estimate_leg(mode="drive")` uses it (falls back to straight line x factor);
   `geocode` uses Nominatim (1 req/s, cached). The UI's "יוצאים מ" (browser location or address)
   is sent with the message; agent 4 adds drive time, route and departure time to the plan.
-- Next: 5 LangSmith check + Hebrew README explaining every part.
+- Step 5: README rewritten in Hebrew (replaces docs/ARCHITECTURE.md). LangSmith: `terramind/observability`
+  exports LANGSMITH_* from .env at startup (pydantic-settings does not, so local runs never traced
+  before). Verifying a real trace still needs a real LANGSMITH_API_KEY in .env.
 - Alerts/closures still come from the Mock Alerts API (matched by trail name) until a real source is found.
-- `docs/ARCHITECTURE.md` describes the old 12-node design; it is replaced by the README in step 5.
 
 ## Rules
 

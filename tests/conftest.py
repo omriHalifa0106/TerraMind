@@ -16,6 +16,7 @@ TEST_DB = os.environ.get("TERRAMIND_TEST_DATABASE_URL")
 os.environ["EMBEDDING_BACKEND"] = "hash"
 os.environ["HTTP_TIMEOUT_S"] = "1"
 os.environ["ANTHROPIC_AUTH_TOKEN"] = ""  # tests inject tests.fakes.FakeLLM, never the real API
+os.environ["LANGSMITH_TRACING"] = "false"  # tests never send traces, even with a real key in .env
 if TEST_DB:
     os.environ["DATABASE_URL"] = TEST_DB
 

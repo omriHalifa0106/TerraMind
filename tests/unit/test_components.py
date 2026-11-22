@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from datetime import date, time
 from pathlib import Path
 from typing import Any
@@ -293,3 +294,19 @@ async def test_structured_output_reuses_the_method_that_worked(monkeypatch: Any)
     for _ in range(3):
         assert (await llm.structured("request_analyst", Out, [])).x == 1
     assert tried == ["function_calling", "json_schema", "json_schema", "json_schema"]
+
+
+def test_langsmith_is_exported_only_with_a_real_key(monkeypatch: Any) -> None:
+    """LangSmith reads os.environ; .env values reach it only through configure_langsmith."""
+    from terramind.config import Settings
+    from terramind.observability import configure_langsmith
+
+    for var in ("LANGSMITH_TRACING", "LANGSMITH_API_KEY", "LANGSMITH_PROJECT"):
+        monkeypatch.delenv(var, raising=False)
+    placeholder = Settings(langsmith_tracing=True, langsmith_api_key="lsv2_...")
+    assert configure_langsmith(placeholder) is False and os.environ["LANGSMITH_TRACING"] == "false"
+
+    monkeypatch.delenv("LANGSMITH_TRACING")
+    real = Settings(langsmith_tracing=True, langsmith_api_key="lsv2_pt_" + "x" * 40, langsmith_project="p")
+    assert configure_langsmith(real) is True
+    assert (os.environ["LANGSMITH_TRACING"], os.environ["LANGSMITH_PROJECT"]) == ("true", "p")
