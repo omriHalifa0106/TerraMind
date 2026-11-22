@@ -6,8 +6,11 @@ Design: `docs/ARCHITECTURE.md`. Deviations from it: README "Implementation notes
 ## Status
 
 MVP phases 0-9 are implemented and tested (offline: HeuristicLLM, synthetic OSM fixture).
-Not yet verified on this machine: real Overpass ingestion, real bge-m3, real Claude calls,
-LangSmith upload. Next: run those, then `evals.run_evals --judge` with Claude and tune prompts.
+Verified on this machine (2026-11-19..21): real Overpass ingestion, bge-m3, real Claude calls.
+`evals.run_evals --judge` with Claude on 2026-11-21: all 8 scenarios pass, faithfulness 0.88-1.0.
+Not yet verified: LangSmith experiment upload / prompt-version comparison (phase 9 exit).
+Open issues: latency 50-160 s per request; only 8 eval scenarios (plan: ~30); 25 tips (plan: ~60).
+Next: expand `scenarios.yaml`, profile and cut latency, LangSmith prompt A/B report.
 Stretch ideas: live re-planning from GPS, multi-agent negotiation, digital twin from `pace_kmh`.
 
 ## Rules
