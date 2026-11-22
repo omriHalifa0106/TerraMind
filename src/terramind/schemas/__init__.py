@@ -4,47 +4,41 @@ from terramind.schemas.base import Frozen, LatLon
 from terramind.schemas.plan import FinalAnswer, NodeError, RoutePlan, Stop, StopKind, TradeOff
 from terramind.schemas.retrieval import (
     EvidenceChunk,
-    GradingResult,
     LegEstimate,
     PointOfInterest,
-    RelevanceGrade,
     ToolStatus,
     TrailCandidate,
 )
 from terramind.schemas.safety import (
     TIMING_CODES,
     AlertKind,
+    CandidateAssessment,
     IssueCode,
-    LlmSafetyReview,
     SafetyIssue,
-    SafetyVerdict,
     Severity,
     TrailAlert,
     TrailStatus,
     WeatherSnapshot,
     WeatherStatus,
 )
-from terramind.schemas.trip import Difficulty, GroupProfile, TrailType, TripRequest, UserProfile
+from terramind.schemas.trip import Difficulty, GroupProfile, TrailType, TripRequest
 
 __all__ = [
     "TIMING_CODES",
     "AlertKind",
+    "CandidateAssessment",
     "Difficulty",
     "EvidenceChunk",
     "FinalAnswer",
     "Frozen",
-    "GradingResult",
     "GroupProfile",
     "IssueCode",
     "LatLon",
     "LegEstimate",
-    "LlmSafetyReview",
     "NodeError",
     "PointOfInterest",
-    "RelevanceGrade",
     "RoutePlan",
     "SafetyIssue",
-    "SafetyVerdict",
     "Severity",
     "Stop",
     "StopKind",
@@ -55,7 +49,6 @@ __all__ = [
     "TrailStatus",
     "TrailType",
     "TripRequest",
-    "UserProfile",
     "WeatherSnapshot",
     "WeatherStatus",
 ]

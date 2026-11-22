@@ -33,19 +33,6 @@ class EvidenceChunk(Frozen):
     score: float
 
 
-class RelevanceGrade(Frozen):
-    chunk_id: str
-    relevant: bool
-    reason: str = Field(max_length=300)
-
-
-class GradingResult(Frozen):
-    grades: list[RelevanceGrade]
-    rewritten_query: str | None = Field(
-        default=None, description="A better search query, only if most chunks were irrelevant"
-    )
-
-
 class PointOfInterest(Frozen):
     poi_id: str
     name: str | None

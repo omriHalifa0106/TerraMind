@@ -10,9 +10,8 @@ from ingestion.seed_knowledge import match_trail, read_tips
 from mcp_servers.knowledge_server.hybrid import rrf_fuse, to_or_tsquery
 from mcp_servers.weather_server.open_meteo import parse_snapshot
 from terramind.embeddings import HashEmbedder, to_pgvector
-from terramind.graph.nodes.planning import PlanDraft, build_plan
-from terramind.graph.nodes.retrieval import fuse_candidates, search_args
-from terramind.llm.heuristic import extract_request
+from terramind.graph.nodes.catalog_search import fuse_candidates, search_args
+from terramind.graph.nodes.route_planner import PlanDraft, build_plan
 from terramind.regions import region_of, resolve_region
 from terramind.schemas import (
     Difficulty,
@@ -106,7 +105,7 @@ def test_search_args_map_request_and_relax() -> None:
     assert loose["tags"] == [] and not loose["loop_only"] and loose["exclude_ids"] == ["x"]
 
 
-def test_build_plan_times_are_monotonic_and_shift_earlier() -> None:
+def test_build_plan_orders_stops_along_the_trail() -> None:
     trail = TrailCandidate(
         trail_id="t", name="T", region="r", length_km=7, trailhead=(33, 35.2), is_loop=False
     )
@@ -117,12 +116,13 @@ def test_build_plan_times_are_monotonic_and_shift_earlier() -> None:
     req = TripRequest(
         region="r", trip_date=date(2026, 12, 5), semantic_query="q", group=GroupProfile(pace_kmh=3.5)
     )
-    p = build_plan(PlanDraft(trail_id="t", title="T", rationale="r"), trail, pois, (33.01, 35.25), req, 0, [])
+    draft = PlanDraft(trail_id="t", title="T", rationale="r")
+    p = build_plan(draft, trail, pois, (33.01, 35.25), req, time(8), [])
     times = [s.arrive_at for s in p.stops]
     assert p.start_time == time(8) and times == sorted(times)  # type: ignore[type-var]
     assert [s.kind for s in p.stops] == ["trailhead", "viewpoint", "water", "end"]  # parking is not a stop
-    shifted = build_plan(PlanDraft(trail_id="t", title="T", rationale="r"), trail, pois, None, req, 180, [])
-    assert shifted.start_time == time(6)  # clamped to the earliest allowed start
+    early = build_plan(draft, trail, pois, None, req, time(6, 35), [])  # the start agent 3 approved
+    assert early.start_time == time(6, 35) and early.end_time < p.end_time
 
 
 def test_open_meteo_parsing() -> None:
@@ -141,15 +141,6 @@ def test_open_meteo_parsing() -> None:
     )
     assert s.precip_prob_max_pct == 70 and s.sunset is not None and s.sunset.hour == 16
     assert s.hourly_precip_prob == {14: 80}
-
-
-def test_heuristic_intake() -> None:
-    today = date(2026, 11, 19)  # Thursday
-    r = extract_request("מסלול מים קל בגולן בשבת עם 2 ילדים בני 6", today)
-    assert r.region == "Golan Heights" and r.difficulty is Difficulty.EASY
-    assert TrailType.WATER in r.trail_types and r.trip_date == date(2026, 11, 21)
-    assert r.group.children == 2 and r.group.min_child_age == 6
-    assert extract_request("a nice hike", today).missing_fields == ["region"]
 
 
 async def test_overpass_falls_back_to_a_mirror_on_502(tmp_path: Path, monkeypatch: object) -> None:
@@ -217,7 +208,7 @@ async def test_stream_text_handles_anthropic_block_chunks(monkeypatch: object) -
             yield AIMessageChunk(content="עולם")
 
     monkeypatch.setattr(client, "get_chat_model", lambda *a, **k: FakeModel())  # type: ignore[attr-defined]
-    out = [t async for t in client.ClaudeLLM().stream_text("explainer", [])]
+    out = [t async for t in client.ClaudeLLM().stream_text("presenter", [])]
     assert "".join(out) == "שלום עולם"  # text blocks kept, thinking dropped
 
 
@@ -275,9 +266,8 @@ async def test_structured_output_reuses_the_method_that_worked(monkeypatch: Any)
             return Runner()
 
     monkeypatch.setattr(client_mod, "get_chat_model", lambda task: FakeModel())
-    monkeypatch.setattr(client_mod, "structured_methods", lambda: ["json_schema", "function_calling"])
     monkeypatch.setattr(client_mod, "model_id_for", lambda task: "m")
     llm = client_mod.ClaudeLLM()
     for _ in range(3):
-        assert (await llm.structured("intake", Out, [])).x == 1
+        assert (await llm.structured("request_analyst", Out, [])).x == 1
     assert tried == ["json_schema", "function_calling", "function_calling", "function_calling"]

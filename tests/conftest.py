@@ -14,9 +14,8 @@ import pytest
 TEST_DB = os.environ.get("TERRAMIND_TEST_DATABASE_URL")
 # Configure before any terramind import reads settings.
 os.environ["EMBEDDING_BACKEND"] = "hash"
-os.environ["LLM_BACKEND"] = "heuristic"
 os.environ["HTTP_TIMEOUT_S"] = "1"
-os.environ["OPENROUTER_API_KEY"] = ""
+os.environ["ANTHROPIC_AUTH_TOKEN"] = ""  # tests inject tests.fakes.FakeLLM, never the real API
 if TEST_DB:
     os.environ["DATABASE_URL"] = TEST_DB
 

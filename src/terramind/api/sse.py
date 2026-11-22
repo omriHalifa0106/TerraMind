@@ -1,15 +1,20 @@
-"""Graph stream -> typed SSE events for the browser."""
+"""One graph run -> a stream of typed Server-Sent Events for the browser.
+
+The agents report progress with emit() (LangGraph stream_mode="custom"); each report is forwarded
+as one SSE event: start, node, request, tool_calls, candidates, assessment, plan, token, final,
+message, timing, error, done.
+"""
 
 from __future__ import annotations
 
 import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from typing import Any
 
 from langchain_core.messages import HumanMessage
 from langchain_core.runnables import RunnableConfig
-from langgraph.types import StreamMode
 
 from terramind.graph.state import turn_input
 from terramind.mcp_client.client import start_call_log
@@ -22,35 +27,30 @@ def sse(event: str, data: Any) -> dict[str, str]:
     return {"event": event, "data": json.dumps(data, ensure_ascii=False, default=str)}
 
 
-async def stream_turn(
-    rt: AppRuntime, message: str, thread_id: str, user_id: str
-) -> AsyncIterator[dict[str, str]]:
+async def stream_turn(rt: AppRuntime, message: str) -> AsyncIterator[dict[str, str]]:
+    run_id = f"run-{uuid.uuid4().hex[:12]}"
     config: RunnableConfig = {
-        "configurable": {"thread_id": thread_id},
         "recursion_limit": rt.context.settings.recursion_limit,
-        "run_name": "terramind-turn",
+        "run_name": "terramind",  # the run's name in LangSmith
         "tags": ["api", rt.context.settings.environment],
-        "metadata": {"user_id": user_id, "thread_id": thread_id},
+        "metadata": {"run_id": run_id},
     }
     calls = start_call_log()
-    modes: list[StreamMode] = ["updates", "custom"]
-    yield sse("start", {"thread_id": thread_id})
+    yield sse("start", {"run_id": run_id})
     try:
         async for mode, chunk in rt.graph.astream(
-            turn_input([HumanMessage(content=message)], user_id),
+            turn_input([HumanMessage(content=message)]),
             config,
             context=rt.context,
-            stream_mode=modes,
+            stream_mode=["updates", "custom"],
         ):
             if mode == "custom" and isinstance(chunk, dict):
                 yield sse(str(chunk.get("event", "custom")), chunk)
             elif mode == "updates" and isinstance(chunk, dict):
-                for node, update in chunk.items():
-                    if isinstance(update, dict) and node == "ask_clarification":
-                        msgs = update.get("messages") or []
-                        yield sse("message", {"text": msgs[-1].content if msgs else ""})
-                    yield sse("node_done", {"node": node})
+                update = chunk.get("request_analyst")
+                if isinstance(update, dict) and update.get("clarification"):
+                    yield sse("message", {"text": update["clarification"]})
     except Exception as exc:  # report, never leave the client hanging
-        log.exception("turn failed")
+        log.exception("run failed")
         yield sse("error", {"detail": f"{type(exc).__name__}: {exc}"[:500]})
     yield sse("done", {"tool_calls": calls})

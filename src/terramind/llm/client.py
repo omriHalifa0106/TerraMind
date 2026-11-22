@@ -1,26 +1,30 @@
-"""LLM access as a small protocol, so graph nodes can run against OpenRouter or a scripted fake."""
+"""LLM access behind a small protocol, so agents can run against Claude or a scripted fake in tests.
+
+Three ways an agent uses the model:
+- structured(): the answer is a Pydantic object (agent 1's TripRequest, agent 4's PlanDraft).
+- tool_calls(): the model chooses which tools to call and with what arguments (agent 2).
+- stream_text(): free text, streamed token by token to the browser (agent 5).
+"""
 
 from __future__ import annotations
 
-import json
 import logging
 import time
 from collections.abc import AsyncIterator, Sequence
 from typing import Any, Protocol
 
-from langchain_core.messages import AIMessage, BaseMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
-from terramind.config import get_settings
-from terramind.llm.router import Task, get_chat_model, model_id_for, structured_methods
+from terramind.llm.router import STRUCTURED_METHODS, StructuredMethod, Task, get_chat_model, model_id_for
 
 log = logging.getLogger("terramind.llm")
 
 
 class LLMError(RuntimeError):
-    """Raised when the model call fails after retries/fallbacks or returns an invalid structure."""
+    """The model call failed after retries, or returned an invalid structure."""
 
 
 def _is_fatal(exc: BaseException) -> bool:
@@ -34,16 +38,10 @@ def describe(exc: BaseException) -> str:
     text = str(exc)
     if "401" in text or "AuthenticationError" in type(exc).__name__:
         return (
-            "The LLM provider rejected the API key (HTTP 401). For OpenRouter, OPENROUTER_API_KEY must be an "
-            "sk-or-v1- key; for Anthropic or a gateway, check ANTHROPIC_AUTH_TOKEN and ANTHROPIC_BASE_URL."
+            "The Anthropic API rejected the key (HTTP 401): check ANTHROPIC_AUTH_TOKEN / ANTHROPIC_BASE_URL."
         )
-    if "402" in text:
-        return "OpenRouter: insufficient credits (HTTP 402). Add credits at https://openrouter.ai/credits."
-    if "404" in text or "not a valid model" in text.lower() or "not_found" in text:
-        return (
-            "Unknown model ID (HTTP 404). Check MODEL_SMART / MODEL_FAST (OpenRouter) or "
-            "ANTHROPIC_MODEL_SMART / ANTHROPIC_MODEL_FAST (Anthropic / gateway) in .env."
-        )
+    if "404" in text or "not_found" in text:
+        return "Unknown model ID (HTTP 404): check ANTHROPIC_MODEL_SMART / ANTHROPIC_MODEL_FAST in .env."
     return f"{type(exc).__name__}: {text}"[:300]
 
 
@@ -56,14 +54,13 @@ class LLMClient(Protocol):
         config: RunnableConfig | None = None,
     ) -> T: ...
 
-    async def agent_structured[T: BaseModel](
+    async def tool_calls(
         self,
         task: Task,
-        schema: type[T],
         messages: Sequence[BaseMessage],
         tools: Sequence[BaseTool],
         config: RunnableConfig | None = None,
-    ) -> tuple[T, list[dict[str, Any]]]: ...
+    ) -> list[dict[str, Any]]: ...
 
     def stream_text(
         self, task: Task, messages: Sequence[BaseMessage], config: RunnableConfig | None = None
@@ -71,17 +68,18 @@ class LLMClient(Protocol):
 
 
 class ClaudeLLM:
-    """Production client (OpenRouter or Anthropic API). Structured output: see router.structured_methods."""
+    """Production client for the Anthropic API."""
 
     def __init__(self) -> None:
-        # model id -> the structured-output method that last worked for it. Tried first next time,
-        # so a method the gateway does not support costs one failed round trip per process, not per call.
-        self._working_method: dict[str, str] = {}
+        # model id -> the structured-output method that last worked. Tried first next time, so an
+        # unsupported method costs one failed round trip per process, not one per call.
+        self._working_method: dict[str, StructuredMethod] = {}
 
-    def _methods_for(self, task: Task) -> list[str]:
-        methods = structured_methods()
+    def _methods_for(self, task: Task) -> list[StructuredMethod]:
         preferred = self._working_method.get(model_id_for(task))
-        return [preferred, *(m for m in methods if m != preferred)] if preferred in methods else methods
+        if preferred is not None:
+            return [preferred, *(m for m in STRUCTURED_METHODS if m != preferred)]
+        return list(STRUCTURED_METHODS)
 
     async def structured[T: BaseModel](
         self,
@@ -107,69 +105,42 @@ class ClaudeLLM:
                         continue
                     break  # e.g. method not supported by this model/gateway: try the next method
                 log.info("%s: %s call took %.2fs", task, method, time.perf_counter() - started)
-                if isinstance(result, schema):
-                    self._working_method[model_id_for(task)] = method
-                    return result
                 try:
-                    validated = schema.model_validate(result)
+                    validated = result if isinstance(result, schema) else schema.model_validate(result)
                 except Exception as exc:
                     last_error = exc
                     msgs = [*msgs, AIMessage(content=f"Previous output was invalid: {exc}. Fix it.")]
                     continue
                 self._working_method[model_id_for(task)] = method
                 return validated
-            log.info(
-                "%s: structured method %s failed (%s), trying next", task, method, type(last_error).__name__
-            )
         raise LLMError(f"{task}: {describe(last_error) if last_error else 'unknown error'}") from last_error
 
-    async def agent_structured[T: BaseModel](
+    async def tool_calls(
         self,
         task: Task,
-        schema: type[T],
         messages: Sequence[BaseMessage],
         tools: Sequence[BaseTool],
         config: RunnableConfig | None = None,
-    ) -> tuple[T, list[dict[str, Any]]]:
-        """Bounded native tool-calling loop, then a final structured answer."""
-        by_name = {t.name: t for t in tools}
-        llm = get_chat_model(task).bind_tools(list(tools))
-        msgs: list[BaseMessage] = list(messages)
-        calls: list[dict[str, Any]] = []
-        for _ in range(get_settings().llm_max_tool_steps):
-            try:
-                ai = await llm.ainvoke(msgs, config=config)
-            except Exception as exc:
-                raise LLMError(f"{task} tool loop: {describe(exc)}") from exc
-            msgs.append(ai)
-            if not isinstance(ai, AIMessage) or not ai.tool_calls:
-                break
-            for call in ai.tool_calls:
-                calls.append({"name": call["name"], "args": call["args"]})
-                tool = by_name.get(call["name"])
-                output: Any = (
-                    await tool.ainvoke(call["args"], config=config) if tool else {"error": "unknown tool"}
-                )
-                content = (
-                    output if isinstance(output, str) else json.dumps(output, ensure_ascii=False, default=str)
-                )
-                msgs.append(ToolMessage(content=content[:6000], tool_call_id=call["id"]))
-        return await self.structured(task, schema, msgs, config), calls
+    ) -> list[dict[str, Any]]:
+        """One model turn with tools bound. Returns the tool calls it asked for (not executed here),
+        e.g. [{"name": "search_trails", "args": {...}}, {"name": "hybrid_search", "args": {...}}]."""
+        model = get_chat_model(task).bind_tools(list(tools))
+        try:
+            ai = await model.ainvoke(list(messages), config=config)
+        except Exception as exc:
+            raise LLMError(f"{task}: {describe(exc)}") from exc
+        if not isinstance(ai, AIMessage):
+            return []
+        return [{"name": c["name"], "args": c["args"]} for c in ai.tool_calls]
 
     async def stream_text(
         self, task: Task, messages: Sequence[BaseMessage], config: RunnableConfig | None = None
     ) -> AsyncIterator[str]:
-        # Runs inside a graph node, so LangGraph's "messages" stream mode also sees these tokens.
-        model = get_chat_model(task, temperature=0.3, streaming=True)
+        model = get_chat_model(task, streaming=True)
         try:
             async for chunk in model.astream(list(messages), config=config):
-                # Anthropic may send content as a list of blocks (text, thinking, ...); `.text`
-                # joins only the text blocks, so thinking is never shown to the user.
-                text = chunk.text
-                if text:
+                # Content may arrive as a list of blocks (text, thinking...): `.text` keeps only text.
+                if text := chunk.text:
                     yield text
         except Exception as exc:
             raise LLMError(f"{task} stream: {describe(exc)}") from exc
-
-
-OpenRouterLLM = ClaudeLLM  # backwards-compatible name

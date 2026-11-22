@@ -6,21 +6,17 @@ readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [
     "langgraph>=1.2,<2",
-    "langgraph-checkpoint-postgres>=3.2,<4",
     "langchain-core>=1.0",
-    "langchain-openai>=1.8,<2",
     "fastmcp>=4.2,<5",
     "fastapi>=0.165",
     "sse-starlette>=3.7",
     "uvicorn[standard]>=0.54",
     "asyncpg>=0.32",
-    "psycopg[binary,pool]>=3.3",
     "pydantic>=2.12",
     "pydantic-settings>=2.16",
     "httpx>=0.28",
     "cachetools>=6",
     "langsmith>=0.15",
-    "pyyaml>=6",
     "langchain-anthropic>=1.0",
 ]
 
@@ -36,7 +32,6 @@ dev = [
     "mypy>=2",
     "ruff>=0.17",
     "types-cachetools",
-    "types-pyyaml",
 ]
 
 [build-system]

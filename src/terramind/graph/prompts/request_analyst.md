@@ -15,4 +15,3 @@ Rules:
 - max_duration_hours / max_length_km / max_drive_minutes only if stated.
 - semantic_query: ONE short line in the user's language describing what they want, for searching trail descriptions.
 - missing_fields: include "region" only if no area at all can be inferred.
-- For a refinement, start from the PREVIOUS REQUEST below and apply only the changes the user asked for.

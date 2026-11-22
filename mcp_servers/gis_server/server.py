@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 
 from mcp_servers.common.db import get_pool
 from mcp_servers.gis_server import queries
+from terramind.config import get_settings
 from terramind.regions import REGIONS, resolve_region
 from terramind.schemas import Difficulty, LegEstimate
 from terramind.schemas.tool_results import (
@@ -159,4 +160,4 @@ async def get_trail_geojson(trail_id: str) -> GeoJsonResult:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8101)
+    mcp.run(transport="http", host=get_settings().mcp_bind_host, port=8101)

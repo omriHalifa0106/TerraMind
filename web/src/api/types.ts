@@ -1,6 +1,6 @@
 // Types mirroring the Python side. Keep in sync with:
 //   src/terramind/schemas/plan.py, schemas/safety.py   (domain models)
-//   src/terramind/api/sse.py, graph/nodes/*.py emit()  (stream events)
+//   src/terramind/api/sse.py, graph/nodes/*.py emit()  (stream events, one per agent step)
 // The server serializes times as "HH:MM:SS" and datetimes as ISO strings.
 
 export type LatLon = [number, number];
@@ -68,11 +68,31 @@ export interface TrailStatus {
   status: "ok" | "unavailable";
 }
 
+export interface TradeOff {
+  rejected_trail_id: string;
+  rejected_trail_name: string | null;
+  factor: string;
+  detail: string;
+}
+
 export interface FinalAnswer {
   summary_md: string;
-  plan: RoutePlan | null; // null => no safe option, the answer recommends postponing
+  plan: RoutePlan | null; // null => no safe option, the answer explains why
+  tradeoffs: TradeOff[];
   safety_notes: string[];
   tips: string[];
+}
+
+/** Agent 3's verdict on one candidate trail (safety/rules.py). */
+export interface CandidateAssessment {
+  trail_id: string;
+  trail_name: string | null;
+  approved: boolean;
+  start_time: string;
+  issues: SafetyIssue[];
+  weather: WeatherSnapshot | null;
+  trail_status: TrailStatus | null;
+  alerts: unknown[];
 }
 
 export interface ToolCall {
@@ -82,28 +102,21 @@ export interface ToolCall {
   ms: number;
 }
 
+export type AgentName = "request_analyst" | "catalog_search" | "enrichment" | "route_planner" | "presenter";
+
 /** Every SSE event the server can send: a discriminated union on `type`. */
 export type StreamEvent =
-  | { type: "start"; data: { thread_id: string } }
-  | { type: "node"; data: { node: string; status: "start" | "done"; round?: number; relaxed?: boolean } }
-  | { type: "node_done"; data: { node: string } }
-  | { type: "route"; data: { intent: string } }
+  | { type: "start"; data: { run_id: string } }
+  | { type: "node"; data: { node: AgentName; status: "start"; round?: number; relaxed?: boolean; candidates?: number } }
   | { type: "request"; data: { request: Record<string, unknown> } }
-  | { type: "candidates"; data: { trails: { trail_id: string; name: string; km: number }[] } }
-  | { type: "graded"; data: { kept: number; total: number } }
+  | { type: "tool_calls"; data: { calls: { tool: string; args: Record<string, unknown> }[] } }
+  | { type: "candidates"; data: { trails: { trail_id: string; name: string; km: number }[]; chunks: number } }
+  | { type: "assessment"; data: { assessment: CandidateAssessment } }
   | { type: "plan"; data: { plan: RoutePlan; rationale: string } }
-  | {
-      type: "conditions";
-      data: { weather: WeatherSnapshot | null; status: TrailStatus | null; alerts: unknown[] };
-    }
-  | {
-      type: "verdict";
-      data: { attempt: number; approved: boolean; scope: "none" | "timing" | "trail"; issues: SafetyIssue[] };
-    }
   | { type: "token"; data: { text: string } }
   | { type: "final"; data: { final: FinalAnswer } }
   | { type: "message"; data: { text: string } }
-  | { type: "warning"; data: { detail: string } }
+  | { type: "timing"; data: { node: AgentName; seconds: number } }
   | { type: "error"; data: { detail: string } }
   | { type: "done"; data: { tool_calls: ToolCall[] } };
 
@@ -111,8 +124,6 @@ export interface Health {
   status: string;
   mcp_servers: string[];
   llm: string;
-  llm_provider: string;
-  persistent_memory: boolean;
 }
 
 export interface TrailFeature {

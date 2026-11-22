@@ -10,6 +10,7 @@ from fastmcp import FastMCP
 
 from mcp_servers.common.db import get_pool
 from mcp_servers.knowledge_server import hybrid
+from terramind.config import get_settings
 from terramind.embeddings import Embedder, build_embedder
 from terramind.schemas import EvidenceChunk
 from terramind.schemas.tool_results import EvidenceResult
@@ -49,20 +50,6 @@ async def hybrid_search(
 
 
 @mcp.tool
-async def semantic_search(
-    query: str, trail_ids: list[str] | None = None, lang: Literal["he", "en"] | None = None, k: int = 8
-) -> EvidenceResult:
-    """Vector-only search (kept as a baseline for evaluating the hybrid retriever)."""
-    try:
-        chunks = await hybrid.vector_search(
-            await get_pool(), get_embedder(), query, trail_ids, lang, min(k, 30)
-        )
-    except ERRORS as exc:
-        return EvidenceResult(status="error", detail=f"{type(exc).__name__}: {exc}"[:300])
-    return _result(chunks)
-
-
-@mcp.tool
 async def get_trail_notes(trail_id: str, k: int = 6) -> EvidenceResult:
     """All stored descriptions and tips linked to one trail."""
     try:
@@ -88,4 +75,4 @@ if __name__ == "__main__":
     logging.basicConfig(level=logging.INFO)
     log.info("loading embedding model (first run downloads BAAI/bge-m3, ~2 GB)...")
     asyncio.run(warm_up())
-    mcp.run(transport="http", host="0.0.0.0", port=8102)
+    mcp.run(transport="http", host=get_settings().mcp_bind_host, port=8102)

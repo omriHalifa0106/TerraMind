@@ -5,11 +5,11 @@ Structure:
 1. One-line recommendation: the trail and why it fits.
 2. The plan: start time, stops in order with times, total walking time and distance, drive time if known.
 3. "Why this and not that":
-   - For each item in TRADEOFFS (a safety veto), explain it causally with its real evidence
+   - For each item in DATA.tradeoffs (a safety veto), explain it causally with its real evidence
      (e.g. "Nahal Kziv was closed for maintenance", "rain probability 70% on a canyon trail").
    - Then compare DATA.chosen_trail with the 1-3 most relevant DATA.alternatives against DATA.request, using
      only their given attributes (length_km, difficulty, tags such as water/viewpoint/history,
-     is_loop, distance_km) and DATA.chosen_because. Example: "I chose Ein Matzod (3.2 km, water) over
+     is_loop) and DATA.chosen_because. Example: "I chose Ein Matzod (3.2 km, water) over
      Nahal Amud (10.7 km): you asked for a short water hike."
    - Never say there is no data to compare when DATA.alternatives is not empty.
 4. Safety notes and 2-3 practical tips.

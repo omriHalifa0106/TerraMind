@@ -16,7 +16,6 @@ export interface VetoedTrail {
 }
 
 export interface ChatState {
-  threadId: string | null;
   busy: boolean;
   messages: ChatMessage[];
   trace: TraceItem[];
@@ -30,7 +29,6 @@ type Action =
   | { kind: "failed"; detail: string }
   | { kind: "finished" };
 
-const THREAD_KEY = "tm-thread";
 const GREETING = "שלום! ספרו לי איפה, מתי ועם מי תרצו לטייל, ואבנה לכם מסלול עם בדיקת בטיחות והסבר.";
 
 let nextId = 1;
@@ -41,24 +39,7 @@ const msg = (role: ChatMessage["role"], text: string, streaming = false): ChatMe
   streaming,
 });
 
-function readThread(): string | null {
-  try {
-    return localStorage.getItem(THREAD_KEY);
-  } catch {
-    return null; // private mode / blocked storage: start a fresh conversation
-  }
-}
-
-function saveThread(id: string): void {
-  try {
-    localStorage.setItem(THREAD_KEY, id);
-  } catch {
-    /* best effort */
-  }
-}
-
 const initial = (): ChatState => ({
-  threadId: readThread(),
   busy: false,
   messages: [msg("bot", GREETING)],
   trace: [],
@@ -70,7 +51,15 @@ const initial = (): ChatState => ({
 function reducer(state: ChatState, action: Action): ChatState {
   switch (action.kind) {
     case "send":
-      return { ...state, busy: true, messages: [...state.messages, msg("user", action.text)], trace: [], vetoed: [] };
+      // Each message is a new run of the five agents: clear the previous plan from the map.
+      return {
+        ...state,
+        busy: true,
+        messages: [...state.messages, msg("user", action.text)],
+        trace: [],
+        plan: null,
+        vetoed: [],
+      };
     case "failed":
       return { ...state, messages: [...state.messages, msg("error", action.detail)] };
     case "finished":
@@ -85,8 +74,6 @@ function applyEvent(state: ChatState, ev: StreamEvent): ChatState {
   const s = item ? { ...state, trace: [...state.trace, item] } : state;
 
   switch (ev.type) {
-    case "start":
-      return { ...s, threadId: ev.data.thread_id };
     case "token": {
       // Append to the bot message being streamed, or start one.
       const last = s.messages.at(-1);
@@ -101,23 +88,20 @@ function applyEvent(state: ChatState, ev: StreamEvent): ChatState {
       return { ...s, messages: [...s.messages, msg("bot", ev.data.text)] };
     case "error":
       return { ...s, messages: [...s.messages, msg("error", ev.data.detail)] };
-    case "verdict": {
-      if (ev.data.approved || ev.data.scope !== "trail") return s;
-      const critical = ev.data.issues.filter((i) => i.severity === "critical");
-      const first = critical[0];
-      if (!first) return s;
-      return { ...s, vetoed: [...s.vetoed, { trailId: first.trail_id, reasons: critical.map((i) => i.evidence) }] };
+    case "assessment": {
+      const a = ev.data.assessment;
+      if (a.approved) return s;
+      const reasons = a.issues.filter((i) => i.severity === "critical").map((i) => i.evidence);
+      return { ...s, vetoed: [...s.vetoed, { trailId: a.trail_id, reasons }] };
     }
     default:
       return s;
   }
 }
 
-export function useChat(userId: string, beforeSend?: () => Promise<void>) {
+export function useChat(beforeSend?: () => Promise<void>) {
   const [state, dispatch] = useReducer(reducer, undefined, initial);
   const abort = useRef<AbortController | null>(null);
-  const threadRef = useRef(state.threadId);
-  threadRef.current = state.threadId;
 
   const send = useCallback(
     async (text: string) => {
@@ -125,12 +109,7 @@ export function useChat(userId: string, beforeSend?: () => Promise<void>) {
       abort.current = new AbortController();
       try {
         await beforeSend?.();
-        for await (const event of streamChat(
-          { message: text, thread_id: threadRef.current, user_id: userId },
-          abort.current.signal,
-        )) {
-          // Side effects stay out of the reducer (React may run reducers twice in dev).
-          if (event.type === "start") saveThread(event.data.thread_id);
+        for await (const event of streamChat(text, abort.current.signal)) {
           dispatch({ kind: "event", event });
         }
       } catch (err) {
@@ -139,7 +118,7 @@ export function useChat(userId: string, beforeSend?: () => Promise<void>) {
         dispatch({ kind: "finished" });
       }
     },
-    [userId, beforeSend],
+    [beforeSend],
   );
 
   /** Closing the stream makes the server stop the run (it checks for disconnects). */

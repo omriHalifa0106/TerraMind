@@ -7,6 +7,8 @@ import pytest
 
 from terramind.api.main import app
 from terramind.runtime import open_runtime
+from terramind.schemas import TrailType, TripRequest
+from tests.fakes import FakeLLM
 from tests.harness import inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
@@ -26,24 +28,27 @@ def parse_sse(body: str) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
     return events
 
 
-async def test_chat_stream_emits_typed_events_and_thread_state(loaded_db: str) -> None:
+async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
     set_scenario("kziv_closed")
-    async with inprocess_gateway() as gw, open_runtime(gateway=gw, persistent=False) as rt:
-        app.state.rt = rt  # skip the lifespan: no ports, in-memory checkpointer
+    req = TripRequest(region="Upper Galilee", trail_types=[TrailType.WATER], semantic_query="water hike")
+    async with inprocess_gateway() as gw, open_runtime(gateway=gw) as rt:
+        rt.context.llm = FakeLLM(req)
+        app.state.rt = rt  # skip the lifespan: no ports
         transport = httpx.ASGITransport(app=app)
         async with httpx.AsyncClient(transport=transport, base_url="http://t", timeout=60) as c:
-            resp = await c.post(
-                "/chat/stream", json={"message": "מסלול מים בגליל העליון מחר", "thread_id": "api-1"}
-            )
+            resp = await c.post("/chat/stream", json={"message": "מסלול מים בגליל העליון מחר"})
             events = parse_sse(resp.text)
             kinds = [e for e, _ in events]
             assert kinds[0] == "start" and kinds[-1] == "done"
-            assert {"route", "candidates", "plan", "verdict", "token", "final"} <= set(kinds)
-            vetoes = [d for e, d in events if e == "verdict" and not d["approved"]]
+            assert {"request", "tool_calls", "candidates", "assessment", "plan", "token", "final"} <= set(
+                kinds
+            )
+            vetoes = [
+                d["assessment"] for e, d in events if e == "assessment" and not d["assessment"]["approved"]
+            ]
             assert vetoes and vetoes[0]["issues"][0]["code"] == "CLOSED"
-            state = (await c.get("/threads/api-1")).json()
-            assert state["final"]["plan"] is not None and len(state["messages"]) == 2
-            geo = await c.get(f"/trails/{state['final']['plan']['trail_id']}/geojson")
+            final = next(d["final"] for e, d in events if e == "final")
+            geo = await c.get(f"/trails/{final['plan']['trail_id']}/geojson")
             assert geo.status_code == 200 and geo.json()["type"] == "Feature"
             assert (await c.get("/trails/nope/geojson")).status_code == 404
             health = (await c.get("/health")).json()

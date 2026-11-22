@@ -1,60 +1,23 @@
-"""Edge functions. Pure functions of the state, unit-tested without any LLM."""
+"""Conditional edges: which agent runs next. Pure functions of the state, tested without any LLM."""
 
 from __future__ import annotations
 
 from typing import Literal
 
 from terramind.config import get_settings
-from terramind.graph.state import TerraMindState
-
-SupervisorRoute = Literal["intake", "ask_clarification", "researcher", "explainer"]
+from terramind.graph.state import TerraMindState, approved
 
 
-def route_supervisor(state: TerraMindState) -> SupervisorRoute:
-    intent = state.get("intent", "new_plan")
-    if intent == "smalltalk":
-        return "ask_clarification"
-    if intent == "question" and state.get("final") is not None:
-        return "explainer"
-    if not state.get("intake_done"):
-        return "intake"
-    request = state.get("request")
-    if request is None or "region" in request.missing_fields:
-        return "ask_clarification"
-    return "researcher"
+def after_request_analyst(state: TerraMindState) -> Literal["catalog_search", "__end__"]:
+    """No region (or the model failed): agent 1 already asked the user, so stop here."""
+    return "__end__" if state.get("clarification") else "catalog_search"  # "__end__" is LangGraph's END
 
 
-def route_after_grader(state: TerraMindState) -> Literal["researcher", "planner", "safe_fallback"]:
-    s = get_settings()
-    if not state.get("candidates"):
-        if state.get("research_rounds", 0) < s.max_research_rounds:
-            return "researcher"  # second round relaxes the spatial filters
-        return "safe_fallback"
-    if (
-        len(state.get("evidence", [])) < s.min_relevant_chunks
-        and state.get("research_rounds", 0) < s.max_research_rounds
-        and state.get("rewritten_query")
-    ):
-        return "researcher"
-    return "planner"
-
-
-def route_after_planner(state: TerraMindState) -> Literal["enrich", "safe_fallback"]:
-    return "enrich" if state.get("draft_plan") is not None else "safe_fallback"
-
-
-def route_after_critic(
-    state: TerraMindState,
-) -> Literal["explainer", "planner", "researcher", "safe_fallback"]:
-    verdict = state["verdict"]
-    if verdict.approved:
-        return "explainer"
-    if state.get("attempts", 0) >= get_settings().max_safety_attempts:
-        return "safe_fallback"
-    if verdict.replan_scope == "timing":
-        return "planner"
-    # Trail veto: the planner can pick from the candidates already found (the vetoed ones are
-    # filtered out there). Search again only when none is left.
-    rejected = set(state.get("rejected_trail_ids", []))
-    remaining = [c for c in state.get("candidates", []) if c.trail_id not in rejected]
-    return "planner" if remaining else "researcher"
+def after_enrichment(state: TerraMindState) -> Literal["route_planner", "catalog_search", "presenter"]:
+    """At least one safe trail -> plan it. All vetoed -> search again, wider, once. Still nothing ->
+    the presenter explains why there is no safe plan (never a guessed one)."""
+    if approved(state):
+        return "route_planner"
+    if state.get("search_rounds", 0) < get_settings().max_search_rounds:
+        return "catalog_search"
+    return "presenter"

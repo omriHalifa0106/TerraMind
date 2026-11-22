@@ -10,11 +10,12 @@ Anything not in the spec is removed, not kept "just in case".
 
 ## Status (2026-11-22)
 
-- Step 1 done: removed evals, old JS frontend, dev scripts, duplicate docs; API serves `web/dist`.
-- Next, step 2: rebuild the graph as exactly 5 agents (drop supervisor, grader, LLM critic,
-  cross-thread memory, HeuristicLLM, OpenRouter). Then 3: data pipeline, 4: OSRM drive times
-  (if time allows), 5: LangSmith check + Hebrew README explaining every part.
-- Alerts/closures still come from the Mock Alerts API until a real source is found.
+- Steps 1-2 done: cleanup; graph rebuilt as exactly 5 agents in `src/terramind/graph/nodes/`
+  (request_analyst, catalog_search, enrichment, route_planner, presenter). No checkpointer or memory:
+  one graph run per message. Verified with real Claude: ~25 s per request (was ~110 s).
+- Next: 3 data pipeline (scheduled ingestion of weather/alerts into tables), 4 OSRM drive times
+  (if time allows), 5 LangSmith check + Hebrew README explaining every part.
+- Alerts/closures still come from the Mock Alerts API (matched by trail name) until a real source is found.
 - `docs/ARCHITECTURE.md` describes the old 12-node design; it is replaced by the README in step 5.
 
 ## Rules
@@ -27,6 +28,7 @@ Anything not in the spec is removed, not kept "just in case".
 - Config only via `pydantic-settings` / `.env`. No secrets or model IDs in code.
 - Agents never touch the DB or HTTP directly: all data goes through the MCP servers (`McpGateway`).
 - `terramind.schemas` are frozen Pydantic models and must not import LangGraph.
+- Tests never call the real LLM: inject `tests/fakes.py:FakeLLM` into `rt.context.llm`.
 - Safety vetoes are decided by `safety/rules.py` (deterministic), never by the LLM.
 - Before using a LangGraph / FastMCP / langchain API, check the installed version's signature.
 - Keep `tests/` slim: safety rules, routing, MCP servers, one graph run. `tests/unit` has no DB/network.

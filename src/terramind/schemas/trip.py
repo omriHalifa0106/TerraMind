@@ -49,14 +49,3 @@ class TripRequest(Frozen):
     avoid: list[str] = Field(default_factory=list)
     semantic_query: str = Field(description="One-line normalized intent used for vector search")
     missing_fields: list[Literal["region", "trip_date"]] = Field(default_factory=list)
-
-
-class UserProfile(Frozen):
-    """Long-term preferences, persisted in AsyncPostgresStore (cross-thread)."""
-
-    user_id: str
-    preferred_difficulty: Difficulty | None = None
-    favorite_types: list[TrailType] = Field(default_factory=list)
-    default_group: GroupProfile | None = None
-    completed_trail_ids: list[str] = Field(default_factory=list)
-    disliked: list[str] = Field(default_factory=list)

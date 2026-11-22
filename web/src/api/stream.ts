@@ -9,14 +9,11 @@ import type { StreamEvent } from "./types";
  *   data: <json>\n
  *   \n                     <- a blank line ends one event
  */
-export async function* streamChat(
-  body: { message: string; thread_id: string | null; user_id: string },
-  signal: AbortSignal,
-): AsyncGenerator<StreamEvent> {
+export async function* streamChat(message: string, signal: AbortSignal): AsyncGenerator<StreamEvent> {
   const resp = await fetch("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
+    body: JSON.stringify({ message }),
     signal,
   });
   if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);

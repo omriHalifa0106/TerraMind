@@ -24,29 +24,15 @@ class Settings(BaseSettings):
     db_pool_max: int = 10
     db_statement_timeout_ms: int = 5000
 
-    # --- LLM provider ---
-    # "auto": native Anthropic API when ANTHROPIC_AUTH_TOKEN / ANTHROPIC_API_KEY is set (e.g. a
-    # gateway such as OneProvider via ANTHROPIC_BASE_URL), otherwise OpenRouter.
-    llm_provider: str = "auto"
+    # --- LLM: Anthropic API, directly or via an Anthropic-compatible gateway ---
     anthropic_base_url: str | None = None  # ANTHROPIC_BASE_URL, without /v1
     anthropic_auth_token: str = ""  # ANTHROPIC_AUTH_TOKEN (sent as Bearer)
     anthropic_api_key: str = ""  # ANTHROPIC_API_KEY (sent as x-api-key)
     anthropic_model_smart: str = "claude-sonnet-5-5"
     anthropic_model_fast: str = "claude-haiku-5-5"
     anthropic_max_tokens: int = 4096
-
-    # --- LLM via OpenRouter ---
-    # "openrouter" = real Claude models; "heuristic" = deterministic offline rules (tests / no API key)
-    llm_backend: str = "openrouter"
-    openrouter_api_key: str = ""
-    openrouter_base_url: str = "https://openrouter.ai/api/v1"
-    model_smart: str = "anthropic/claude-sonnet-5.5"
-    model_fast: str = "anthropic/claude-haiku-5.5"
-    model_smart_fallbacks: list[str] = Field(default_factory=lambda: ["anthropic/claude-sonnet-5"])
-    model_fast_fallbacks: list[str] = Field(default_factory=lambda: ["anthropic/claude-haiku-4.5"])
     llm_timeout_s: float = 45.0
     llm_max_retries: int = 2
-    llm_max_tool_steps: int = 4
 
     # --- embeddings ---
     embedding_model: str = "BAAI/bge-m3"
@@ -60,6 +46,8 @@ class Settings(BaseSettings):
     mcp_weather_url: str = "http://localhost:8103/mcp"
     mcp_alerts_url: str = "http://localhost:8104/mcp"
     mcp_tool_timeout_s: float = 20.0
+    # Where the MCP servers listen. Local only by default; docker-compose sets 0.0.0.0 inside containers.
+    mcp_bind_host: str = "127.0.0.1"
 
     # --- external APIs ---
     open_meteo_url: str = "https://api.open-meteo.com/v1/forecast"
@@ -79,22 +67,9 @@ class Settings(BaseSettings):
     region_bbox: tuple[float, float, float, float] = DEFAULT_BBOX
 
     # --- graph limits ---
-    max_research_rounds: int = 2
-    max_safety_attempts: int = 3
-    min_relevant_chunks: int = 3
-    recursion_limit: int = 40
-
-    @property
-    def resolved_llm_provider(self) -> str:
-        if self.llm_provider != "auto":
-            return self.llm_provider
-        return "anthropic" if (self.anthropic_auth_token or self.anthropic_api_key) else "openrouter"
-
-    @property
-    def llm_key(self) -> str:
-        if self.resolved_llm_provider == "anthropic":
-            return self.anthropic_auth_token or self.anthropic_api_key
-        return self.openrouter_api_key
+    max_search_rounds: int = 2  # agent 2 runs again (relaxed) when agent 3 vetoes every candidate
+    candidates_to_check: int = 5  # agent 3 checks this many of agent 2's best candidates
+    recursion_limit: int = 25
 
 
 @lru_cache(maxsize=1)

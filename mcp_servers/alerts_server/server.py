@@ -71,4 +71,4 @@ async def list_active_alerts(
 
 
 if __name__ == "__main__":
-    mcp.run(transport="http", host="0.0.0.0", port=8104)
+    mcp.run(transport="http", host=get_settings().mcp_bind_host, port=8104)

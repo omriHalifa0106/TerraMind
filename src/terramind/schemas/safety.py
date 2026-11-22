@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date, datetime
+from datetime import date, datetime, time
 from enum import StrEnum
 from typing import Literal
 
@@ -78,19 +78,17 @@ class SafetyIssue(Frozen):
     code: IssueCode
     severity: Severity
     evidence: str = Field(description="Cites the tool result that triggered the issue")
-    source: Literal["rule", "llm"]
+    source: Literal["rule"] = "rule"  # vetoes come only from safety/rules.py, never from the LLM
 
 
-class LlmSafetyReview(Frozen):
-    """What the critic LLM may add on top of the deterministic rules (soft factors only)."""
+class CandidateAssessment(Frozen):
+    """Agent 3's verdict on one candidate trail, decided by the deterministic rules."""
 
-    extra_issues: list[SafetyIssue] = Field(default_factory=list)
-    guidance_for_replan: str | None = None
-
-
-class SafetyVerdict(Frozen):
+    trail_id: str
+    trail_name: str | None = None
     approved: bool
+    start_time: time  # the start the rules accepted (may be earlier than requested, for daylight/heat)
     issues: list[SafetyIssue] = Field(default_factory=list)
-    rejected_trail_ids: list[str] = Field(default_factory=list)
-    replan_scope: Literal["none", "timing", "trail"] = "none"
-    guidance_for_replan: str | None = None
+    weather: WeatherSnapshot | None = None
+    trail_status: TrailStatus | None = None
+    alerts: list[TrailAlert] = Field(default_factory=list)

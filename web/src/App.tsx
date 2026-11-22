@@ -5,9 +5,6 @@ import { Composer, Messages, Trace } from "./components/Chat";
 import { TrailMap } from "./components/TrailMap";
 import { useChat } from "./hooks/useChat";
 
-// Until there is a login (backend hardening step), every browser is the same demo user.
-const USER_ID = "demo-user";
-
 function useHealth(): Health | "offline" | null {
   const [health, setHealth] = useState<Health | "offline" | null>(null);
   useEffect(() => {
@@ -39,7 +36,7 @@ function useScenarios() {
 export function App() {
   const health = useHealth();
   const scenarios = useScenarios();
-  const { state, send, stop } = useChat(USER_ID, scenarios.sync);
+  const { state, send, stop } = useChat(scenarios.sync);
 
   const healthOk = health !== null && health !== "offline" && health.mcp_servers.length === 4;
   const healthText =

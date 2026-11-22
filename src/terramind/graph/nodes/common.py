@@ -1,4 +1,4 @@
-"""Helpers shared by graph nodes: prompts, stream events, error records, JSON rendering."""
+"""Helpers shared by the agents: prompts, stream events, error records, JSON rendering."""
 
 from __future__ import annotations
 
@@ -20,29 +20,28 @@ PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 HEBREW = re.compile(r"[֐-׿]")
 
 
-@lru_cache(maxsize=16)
+@lru_cache(maxsize=8)
 def prompt(name: str) -> str:
+    """The system prompt of an agent, from graph/prompts/<name>.md."""
     return (PROMPTS_DIR / f"{name}.md").read_text(encoding="utf-8")
 
 
 def emit(runtime: Runtime[TerraMindContext], event: str, **data: Any) -> None:
-    """Custom stream event (stream_mode="custom"), forwarded to the UI as SSE."""
-    with contextlib.suppress(Exception):  # streaming is best-effort; never break a node over it
+    """Send a progress event to the browser (LangGraph stream_mode="custom" -> SSE)."""
+    with contextlib.suppress(Exception):  # streaming is best-effort; never break an agent over it
         runtime.stream_writer({"event": event, **data})
 
 
-def error(node: str, kind: str, exc: BaseException | str, recoverable: bool = True) -> NodeError:
+def error(node: str, kind: str, exc: BaseException | str) -> NodeError:
     message = exc if isinstance(exc, str) else f"{type(exc).__name__}: {exc}"
     return NodeError.model_validate(
-        {"node": node, "kind": kind, "message": message[:500], "recoverable": recoverable}
+        {"node": node, "kind": kind, "message": message[:500], "recoverable": True}
     )
 
 
 def to_json(obj: Any) -> str:
     def default(o: Any) -> Any:
-        if isinstance(o, BaseModel):
-            return o.model_dump(mode="json")
-        return str(o)
+        return o.model_dump(mode="json") if isinstance(o, BaseModel) else str(o)
 
     return json.dumps(obj, ensure_ascii=False, default=default)
 
