@@ -8,18 +8,21 @@ If no region can be found, the agent asks the user instead of guessing, and the 
 
 from __future__ import annotations
 
+import json
 from datetime import date, timedelta
 from typing import Any
 
 from langchain_core.messages import AIMessage, SystemMessage
 from langgraph.runtime import Runtime
+from pydantic import BaseModel, Field
 
 from terramind.graph.nodes.common import emit, error, is_hebrew, last_user_text, prompt
+from terramind.graph.scope import Change, decide_scope
 from terramind.graph.state import TerraMindContext, TerraMindState
 from terramind.llm.caching import cached_system
 from terramind.llm.client import LLMError
 from terramind.regions import region_of, resolve_region
-from terramind.schemas import TrailCandidate, TripRequest
+from terramind.schemas import PreviousTurn, TrailCandidate, TripRequest
 from terramind.schemas.tool_results import TrailSearchResult
 
 FULL_NAME_MATCH = 1.0  # find_trails_by_name score for a trail named in full
@@ -34,6 +37,38 @@ async def _named_trails(runtime: Runtime[TerraMindContext], text: str) -> list[T
     except ValueError:
         return []
     return [t for t in found if t.fused_score >= FULL_NAME_MATCH]
+
+
+class AnalystOutput(BaseModel):
+    """Agent 1's structured answer: the (updated) request and what kind of message this was."""
+
+    request: TripRequest
+    change: Change = Field(
+        default="new_trip",
+        description="new_trip: a new or unrelated trip. edit: changes the current trip "
+        "(hours, places, start, date...). different_trail: wants another trail for the same trip.",
+    )
+
+
+def _conversation(previous: PreviousTurn) -> str:
+    """The previous turn, for a follow-up message ("make it 4 hours", "add a winery")."""
+    plan = previous.plan
+    current = (
+        {
+            "trail": plan.title,
+            "start": str(plan.start_time)[:5],
+            "end": str(plan.day_end_time or plan.end_time)[:5],
+            "stops": [s.name for s in plan.stops],
+        }
+        if plan
+        else None
+    )
+    chat = "\n".join(f"{line.role}: {line.text[:600]}" for line in previous.history)
+    return (
+        f"PREVIOUS REQUEST: {previous.request.model_dump_json()}\n"
+        f"CURRENT PLAN: {json.dumps(current, ensure_ascii=False)}\n"
+        f"RECENT CHAT:\n{chat}"
+    )
 
 
 def _ask_for_region(he: bool) -> str:
@@ -51,13 +86,15 @@ async def request_analyst(state: TerraMindState, runtime: Runtime[TerraMindConte
     he = is_hebrew(text)
     today = date.today()
 
+    previous = state.get("previous")
     try:
-        req = await runtime.context.llm.structured(
+        out = await runtime.context.llm.structured(
             "request_analyst",
-            TripRequest,
+            AnalystOutput,
             [
                 cached_system(prompt("request_analyst")),
                 SystemMessage(content=f"TODAY: {today.isoformat()} ({today:%A})"),
+                *([SystemMessage(content=_conversation(previous))] if previous else []),
                 *state["messages"][-1:],
             ],
         )
@@ -72,6 +109,12 @@ async def request_analyst(state: TerraMindState, runtime: Runtime[TerraMindConte
             "messages": [AIMessage(content=msg)],
             "errors": [error("request_analyst", "llm_error", exc)],
         }
+
+    req, change = out.request, out.change
+    if previous is not None and change != "new_trip":
+        # A follow-up keeps what it does not change, even if the model left a field out.
+        keep = {k: getattr(previous.request, k) for k in ("region", "trip_date") if getattr(req, k) is None}
+        req = req.model_copy(update=keep)
 
     notes: list[str] = []
     named = await _named_trails(runtime, text)
@@ -98,9 +141,27 @@ async def request_analyst(state: TerraMindState, runtime: Runtime[TerraMindConte
         "assumptions": notes,
         "named_trail_ids": [t.trail_id for t in named],
         "clarification": None,
+        "scope": "search",
+        "excluded_trail_ids": list(previous.excluded_trail_ids) if previous else [],
     }
     if not req.region:
         question = _ask_for_region(he)
         update["clarification"] = question
         update["messages"] = [AIMessage(content=question)]
+        return update
+
+    scope, reason = decide_scope(previous, req, change)
+    emit(runtime, "scope", node="request_analyst", scope=scope, reason=reason)
+    update["scope"] = scope
+    if previous is not None and previous.plan is not None:
+        if change == "different_trail":
+            update["excluded_trail_ids"] = [*update["excluded_trail_ids"], previous.plan.trail_id]
+        elif scope == "replan":
+            # Re-plan the trails agent 3 already approved; keep the same trail unless one is named.
+            update |= {
+                "candidates": previous.candidates,
+                "assessments": previous.assessments,
+                "evidence": previous.evidence,
+                "named_trail_ids": update["named_trail_ids"] or [previous.plan.trail_id],
+            }
     return update

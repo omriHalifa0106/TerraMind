@@ -40,7 +40,7 @@ function useScenarios() {
 export function App() {
   const health = useHealth();
   const scenarios = useScenarios();
-  const { state, send, stop, showOnMap } = useChat(scenarios.sync);
+  const { state, send, stop, showOnMap, newChat } = useChat(scenarios.sync);
   const [origin, setOrigin] = useState<Origin | null>(loadOrigin);
   const changeOrigin = (o: Origin | null) => {
     setOrigin(o);
@@ -74,6 +74,9 @@ export function App() {
           <span className="tagline">מתכנן מסלולים עם 5 סוכנים · גליל, מירון, גולן</span>
         </div>
         <div className="controls">
+          <button type="button" className="new-chat" onClick={newChat} disabled={state.turns.length === 0}>
+            שיחה חדשה
+          </button>
           <DataFreshness refreshKey={`${state.busy}-${scenarios.current}`} />
           {Object.keys(scenarios.options).length > 0 && (
             <label className="scenario">

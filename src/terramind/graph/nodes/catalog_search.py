@@ -121,7 +121,8 @@ async def catalog_search(state: TerraMindState, runtime: Runtime[TerraMindContex
     req = state["request"]
     rounds = state.get("search_rounds", 0)
     relaxed = rounds >= 1  # a second round means agent 3 vetoed everything: widen the search
-    exclude = rejected_ids(state)
+    # Vetoed by agent 3, plus trails the user asked to replace in this chat ("a different trail").
+    exclude = list(dict.fromkeys([*rejected_ids(state), *state.get("excluded_trail_ids", [])]))
     emit(runtime, "node", node="catalog_search", status="start", round=rounds + 1, relaxed=relaxed)
 
     errors = []

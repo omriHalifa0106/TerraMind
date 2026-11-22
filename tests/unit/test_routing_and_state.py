@@ -6,7 +6,7 @@ from datetime import time
 
 from terramind.graph.routing import after_enrichment, after_request_analyst
 from terramind.graph.state import TerraMindState, approved, rejected_ids
-from terramind.schemas import CandidateAssessment, TrailCandidate
+from terramind.schemas import CandidateAssessment, TrailCandidate, TripRequest
 
 
 def cand(tid: str) -> TrailCandidate:
@@ -47,3 +47,39 @@ def test_approved_follows_search_ranking_and_ignores_older_rounds() -> None:
     )
     assert [a.trail_id for a in approved(s)] == ["b", "c"]  # "x" was approved in an earlier round
     assert rejected_ids(s) == ["a"]
+
+
+def test_follow_up_scope_is_decided_by_what_changed() -> None:
+    """A change to the day re-plans the trails agent 3 approved; a change to what is searched or
+    checked for safety searches again; no previous plan means a new search."""
+    from terramind.graph.scope import decide_scope
+    from terramind.schemas import GroupProfile, PreviousTurn, RoutePlan, Stop
+
+    base = TripRequest(region="Golan", semantic_query="q")
+    plan = RoutePlan(
+        plan_id="p",
+        trail_id="t",
+        title="T",
+        walk_km=3,
+        walk_minutes=60,
+        stops=[
+            Stop(order=0, name="a", kind="trailhead", location=(33, 35)),
+            Stop(order=1, name="b", kind="end", location=(33, 35)),
+        ],
+        start_time=time(8),
+        end_time=time(9),
+    )
+    prev = PreviousTurn(request=base, plan=plan)
+
+    def scope(new: TripRequest, change: str = "edit") -> str:
+        return decide_scope(prev, new, change)[0]  # type: ignore[arg-type]
+
+    assert scope(base.model_copy(update={"want_places": ["restaurant"]})) == "replan"
+    assert scope(base.model_copy(update={"day_hours": 4})) == "replan"
+    assert scope(base.model_copy(update={"start_time": time(9)})) == "search"  # daylight is re-checked
+    assert scope(base.model_copy(update={"group": GroupProfile(children=2, min_child_age=5)})) == "search"
+    assert scope(base, "different_trail") == "search"
+    assert scope(base, "new_trip") == "search"
+    assert decide_scope(None, base, "edit")[0] == "search"
+    reason = decide_scope(prev, base.model_copy(update={"day_hours": 4}), "edit")[1]
+    assert "אורך היום" in reason

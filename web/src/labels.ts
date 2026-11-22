@@ -178,6 +178,8 @@ export function describeEvent(ev: StreamEvent): TraceItem | null {
     }
     case "plan":
       return item("plan", ev.data.plan.title);
+    case "scope":
+      return item("scope", `${ev.data.scope === "replan" ? "תכנון מחדש בלבד" : "חיפוש מחדש"}: ${ev.data.reason}`);
     case "timing":
       return item("time", `${AGENT_INFO[ev.data.node].title}: ${ev.data.seconds.toFixed(1)}s`);
     case "done":

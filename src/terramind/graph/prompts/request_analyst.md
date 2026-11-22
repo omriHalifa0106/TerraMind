@@ -26,3 +26,13 @@ Rules:
 - kosher_only: true only when they ask for kosher ("כשר").
 - semantic_query: ONE short line in the user's language describing what they want, for searching trail descriptions.
 - missing_fields: include "region" only if no area at all can be inferred.
+
+Follow-ups (when PREVIOUS REQUEST / CURRENT PLAN are given, the user is continuing a chat):
+- Return the FULL updated request: start from PREVIOUS REQUEST and apply only what the new message changes.
+  "תוסיף מסעדה" -> want_places gains restaurant, everything else stays. "תקצר לארבע שעות" -> day_hours=4.
+  "בלי יקב" -> remove winery from want_places. "נצא ב-9" -> start_time 09:00. "ביום ראשון" -> trip_date.
+- change:
+  - "edit": the message changes the current trip (hours, places, start time, date, difficulty, group...).
+  - "different_trail": they want another trail for the same day ("מסלול אחר", "לא אהבתי את המסלול").
+  - "new_trip": a different trip altogether (another area or a fresh request). Then ignore PREVIOUS REQUEST.
+- semantic_query stays as before unless the kind of trail changes.

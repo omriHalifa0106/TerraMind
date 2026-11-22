@@ -20,6 +20,10 @@ Structure:
 4. Safety notes and 2-3 practical tips.
 
 Hard rules:
+- Never show internal codes or field names (INSUFFICIENT_DAYLIGHT, FLOOD_RISK, day_end_time, open_state...):
+  say what they mean in plain words.
+- In a follow-up (DATA.follow_up is true), start with one line saying what changed compared with the previous
+  plan (e.g. "added a restaurant after the hike"), then give the updated plan.
 - Use ONLY facts in the DATA block. Never invent numbers, names, closures or weather.
 - When you use a fact from EVIDENCE, cite its id in square brackets, e.g. [kc-1a2b3c4d5e6f7a8b].
 - If there is no plan (all options were unsafe), say so clearly, explain why with the data, and suggest

@@ -63,3 +63,46 @@ async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
             fresh = (await c.get("/pipeline")).json()  # set_scenario above ran the alerts pipeline
             assert fresh["alerts"]["last_status"] == "ok" and fresh["alerts"]["last_good_at"]
     await set_scenario("normal")
+
+
+async def test_a_follow_up_edits_the_same_trip(loaded_db: str) -> None:
+    """Same chat, second message only changes the day: agents 2-3 are skipped, the same trail is kept,
+    and agent 1 saw the previous turn. A new chat id starts from scratch."""
+    import uuid
+
+    await set_scenario("normal")
+    first = TripRequest(region="Upper Galilee", trail_types=[TrailType.WATER], semantic_query="water hike")
+    thread = uuid.uuid4().hex
+    async with inprocess_gateway() as gw, open_runtime(gateway=gw) as rt:
+        app.state.rt = rt
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://t", timeout=60) as c:
+
+            async def turn(llm: FakeLLM, text: str, thread_id: str) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
+                rt.context.llm = llm
+                resp = await c.post("/chat/stream", json={"message": text, "thread_id": thread_id})
+                return parse_sse(resp.text)
+
+            # Named so the fake model picks Kziv, the fixture trail with places around it.
+            with_cart = first.model_copy(update={"want_places": ["coffee_cart"], "day_hours": 8})
+            one = await turn(FakeLLM(with_cart), "יום של 8 שעות בנחל כזיב עם עגלת קפה", thread)
+            plan1 = next(d["plan"] for e, d in one if e == "plan")
+            assert [s["category"] for s in plan1["stops"] if s.get("place_id")] == ["coffee_cart"]
+
+            add = with_cart.model_copy(update={"want_places": ["coffee_cart", "winery"]})
+            edit = FakeLLM(add, change="edit")
+            two = await turn(edit, "תוסיף יקב", thread)
+            ran = [d["node"] for e, d in two if e == "node"]
+            assert ran == ["request_analyst", "route_planner", "presenter"]  # no new search or checks
+            assert next(d for e, d in two if e == "scope")["scope"] == "replan"
+            plan2 = next(d["plan"] for e, d in two if e == "plan")
+            assert plan2["trail_id"] == plan1["trail_id"]
+            kinds = [s["category"] for s in plan2["stops"] if s.get("place_id")]
+            assert "coffee_cart" in kinds  # kept: the edit only asked to add
+            assert "winery" in kinds or any("יקב" in d for d in plan2["dropped_places"])
+            assert "PREVIOUS REQUEST" in edit.prompts["conversation"]
+            assert next(d for e, d in two if e == "start")["follow_up"] is True
+
+            other = await turn(FakeLLM(first), "מסלול מים בגליל העליון", uuid.uuid4().hex)
+            assert next(d for e, d in other if e == "start")["follow_up"] is False
+            assert "catalog_search" in [d["node"] for e, d in other if e == "node"]

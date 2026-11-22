@@ -30,7 +30,7 @@ from terramind.day_plan import (
     leg_pairs,
     split_before_after,
 )
-from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, hike_minutes, walk_minutes
+from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, haversine_km, hike_minutes, walk_minutes
 from terramind.geo import TERRAIN_FACTOR as TERRAIN
 from terramind.graph.nodes.common import emit, error, prompt, to_json
 from terramind.graph.state import TerraMindContext, TerraMindState, approved
@@ -56,6 +56,7 @@ MAX_POIS_IN_PROMPT = 12
 MAX_PLACES = 4  # day-plan places around the hike
 PLACES_RADIUS_KM = 12  # around the trailhead
 ON_THE_WAY_RADIUS_KM = 2  # around the drive from home
+SAME_PLACE_KM = 0.3  # a place this close to a trail stop of the same kind is that stop
 PLACE_KINDS_BY_DEFAULT = [
     "restaurant",
     "cafe",
@@ -233,7 +234,9 @@ async def _places(
         way_args = {
             "route": drive.route,
             "radius_km": ON_THE_WAY_RADIUS_KM,
-            "categories": sorted(ON_THE_WAY | set(req.want_places)),
+            # Coffee only: other kinds near the road would crowd it out of the limit, and the
+            # rest of the day's places belong near the trail.
+            "categories": sorted(ON_THE_WAY),
             "limit": 8,
         }
         calls.append(ctx.tools.call("gis", "find_places_near", way_args))
@@ -247,6 +250,42 @@ async def _places(
     way_ids = {p.poi_id for p in on_way}
     places = kosher_filter([*on_way, *(p for p in near if p.poi_id not in way_ids)], req)
     return places, way_ids
+
+
+def _current_places(previous_plan: RoutePlan) -> tuple[list[NearbyPlace], set[str]]:
+    """The places of the plan being edited, rebuilt from the plan itself, so "keep them" never depends
+    on what a new search happens to return. Places before the hike were on the way."""
+    start = previous_plan.start_time
+    places: list[NearbyPlace] = []
+    before: set[str] = set()
+    for s in previous_plan.stops:
+        if not s.place_id or not s.category:
+            continue
+        places.append(
+            NearbyPlace(
+                poi_id=s.place_id,
+                name=s.name,
+                category=s.category,
+                location=s.location,
+                distance_km=0.0,
+                opening_hours=s.opening_hours,
+                kosher=s.kosher,
+            )
+        )
+        if s.arrive_at is not None and s.arrive_at < start:
+            before.add(s.place_id)
+    return places, before
+
+
+def _not_on_trail(places: list[NearbyPlace], pois: list[PointOfInterest]) -> list[NearbyPlace]:
+    """Drop places that are already stops of the hike itself (the same waterfall found twice)."""
+
+    def same(p: NearbyPlace, q: PointOfInterest) -> bool:
+        if q.name and q.name == p.name:
+            return True
+        return q.category == p.category and haversine_km(p.location, q.location) < SAME_PLACE_KM
+
+    return [p for p in places if not any(same(p, q) for q in pois)]
 
 
 async def _legs(ctx: TerraMindContext, pairs: list[tuple[str, str]], where: dict[str, LatLon]) -> Legs:
@@ -300,13 +339,19 @@ async def _with_places(
     found: tuple[list[NearbyPlace], set[str]] | None,
     budget_min: int,
     sunset: datetime | None,
+    keep_ids: list[str],
 ) -> RoutePlan:
-    """Add the places the model chose (or sensible defaults) around the hike, timed by day_plan."""
+    """Add the places the model chose (or sensible defaults) around the hike, timed by day_plan.
+    keep_ids: the places of the plan being edited, kept when the model chose none."""
     places, on_way = found or ([], set())
     by_place = {p.poi_id: p for p in places}
     chosen = [by_place[i] for i in draft.place_ids if i in by_place]  # ids outside the list are ignored
     if not chosen:
-        chosen = default_places(places, req, budget_min)
+        kept = [by_place[i] for i in keep_ids if i in by_place]
+        have = {p.category for p in kept}
+        missing = req.model_copy(update={"want_places": [k for k in req.want_places if k not in have]})
+        extra = default_places(places, missing, budget_min) if missing.want_places or not kept else []
+        chosen = [*kept, *(p for p in extra if p not in kept)]
     if not chosen:
         return plan
     before, after = split_before_after(chosen[:MAX_PLACES], on_way)
@@ -353,7 +398,29 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
     places_by: dict[str, tuple[list[NearbyPlace], set[str]]] = {}
     if wants_day:
         found = await asyncio.gather(*(_places(ctx, req, c, drive_by[c.trail_id]) for c in top))
-        places_by = {c.trail_id: f for c, f in zip(top, found, strict=True)}
+        places_by = {
+            c.trail_id: (_not_on_trail(f[0], data[c.trail_id][1]), f[1])
+            for c, f in zip(top, found, strict=True)
+        }
+    # An edit of the current plan ("add a restaurant") keeps what the user did not ask to change.
+    previous = state.get("previous")
+    if wants_day and state.get("scope") == "replan" and previous and previous.plan:
+        kept, kept_before = _current_places(previous.plan)
+        if previous.plan.trail_id in places_by:
+            found_places, way = places_by[previous.plan.trail_id]
+            known = {p.poi_id for p in found_places}
+            places_by[previous.plan.trail_id] = (
+                [*(p for p in kept if p.poi_id not in known), *found_places],
+                way | kept_before,
+            )
+    current_plan = (
+        {
+            "trail_id": previous.plan.trail_id,
+            "place_ids": [s.place_id for s in previous.plan.stops if s.place_id],
+        }
+        if state.get("scope") == "replan" and previous and previous.plan
+        else None
+    )
     budgets = {
         c.trail_id: int(req.day_hours * 60 - hike_minutes(c.length_km, req.group.pace_kmh))
         for c in top
@@ -381,6 +448,9 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
                         f"POIS BY TRAIL: {to_json({tid: _poi_brief(f[1]) for tid, f in data.items()})}\n"
                         f"PLACES BY TRAIL: {to_json(place_lists)}\n"
                         f"MINUTES LEFT FOR PLACES (day length minus the hike): {budgets or 'not given'}\n"
+                        f"CURRENT PLAN (an edit of it; keep its places unless the message changes them): "
+                        f"{to_json(current_plan) if current_plan else 'none'}\n"
+                        f"USER MESSAGE: {state['messages'][-1].content if state.get('messages') else ''}\n"
                         f"EVIDENCE: {to_json(evidence)}"
                     )
                 ),
@@ -422,6 +492,9 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
             places_by.get(trail.trail_id),
             budgets.get(trail.trail_id, 0),
             weather.sunset if weather else None,
+            list(current_plan["place_ids"])
+            if current_plan and current_plan["trail_id"] == trail.trail_id
+            else [],
         )
 
     emit(runtime, "plan", node="route_planner", plan=plan.model_dump(mode="json"), rationale=draft.rationale)

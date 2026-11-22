@@ -1,7 +1,9 @@
 r"""The LangGraph workflow: five agents in a chain, with one safety loop.
 
 START -> 1 request_analyst --(no region: ask the user)--> END
-                |
+                |      \
+                |       +-- a follow-up that only changes the day (hours, places, starting point)
+                |           goes straight to 4, re-planning the trails 3 approved last turn
                 v
          2 catalog_search  <-------------------------------+
                 |                                          | all candidates vetoed

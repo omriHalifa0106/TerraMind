@@ -13,12 +13,13 @@ export async function* streamChat(
   message: string,
   origin: Origin | null,
   dayHours: number | null,
+  threadId: string,
   signal: AbortSignal,
 ): AsyncGenerator<StreamEvent> {
   const resp = await fetch("/chat/stream", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message, origin, day_hours: dayHours }),
+    body: JSON.stringify({ message, origin, day_hours: dayHours, thread_id: threadId }),
     signal,
   });
   if (!resp.ok || !resp.body) throw new Error(`HTTP ${resp.status}`);

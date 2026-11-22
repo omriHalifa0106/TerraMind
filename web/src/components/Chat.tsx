@@ -66,7 +66,7 @@ export function Chat({
       <div className="composer-wrap">
         <OriginPicker origin={origin} onChange={onOriginChange} />
         <HoursPicker value={dayHours} onChange={onDayHoursChange} />
-        <Composer busy={busy} onSend={onSend} onStop={onStop} />
+        <Composer busy={busy} followUp={turns.length > 0} onSend={onSend} onStop={onStop} />
       </div>
     </section>
   );
@@ -85,7 +85,7 @@ function Welcome({ onSend, disabled, compact }: { onSend: (t: string) => void; d
         <div className="bubble">
           <p>
             שלום! ספרו לי איפה, מתי ועם מי תרצו לטייל. <b>חמישה סוכנים</b> יעבדו על הבקשה אחד אחרי השני, ותוכלו לראות
-            כאן בדיוק מה כל אחד מהם עושה.
+            כאן בדיוק מה כל אחד מהם עושה. אחרי שתקבלו תוכנית אפשר להמשיך לערוך אותה בשיחה.
           </p>
           {!compact && (
             <ol className="crew">
@@ -181,7 +181,17 @@ function PlanCard({ turn, onMap, onShowOnMap }: { turn: Turn; onMap: boolean; on
   );
 }
 
-function Composer({ busy, onSend, onStop }: { busy: boolean; onSend: (t: string) => void; onStop: () => void }) {
+function Composer({
+  busy,
+  followUp,
+  onSend,
+  onStop,
+}: {
+  busy: boolean;
+  followUp: boolean;
+  onSend: (t: string) => void;
+  onStop: () => void;
+}) {
   const [text, setText] = useState("");
   const submit = (e?: FormEvent) => {
     e?.preventDefault();
@@ -208,7 +218,11 @@ function Composer({ busy, onSend, onStop }: { busy: boolean; onSend: (t: string)
         maxLength={2000}
         onChange={(e) => setText(e.target.value)}
         onKeyDown={onKey}
-        placeholder="למשל: מסלול מים קל בגליל העליון לשבת, עם שני ילדים בני 6"
+        placeholder={
+          followUp
+            ? "אפשר לערוך: תוסיף מסעדה, תקצר לארבע שעות, נצא ב-9, מסלול אחר..."
+            : "למשל: מסלול מים קל בגליל העליון לשבת, עם שני ילדים בני 6"
+        }
       />
       {busy ? (
         <button type="button" className="stop" onClick={onStop}>

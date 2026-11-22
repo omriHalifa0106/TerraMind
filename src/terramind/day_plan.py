@@ -13,7 +13,7 @@ from datetime import date, datetime, timedelta
 from itertools import pairwise
 
 from terramind.geo import DRIVE_DETOUR, DRIVE_KMH, haversine_km
-from terramind.opening_hours import OpenState, is_open
+from terramind.opening_hours import OpenState, is_open, opens_within
 from terramind.schemas import LegEstimate, NearbyPlace, RoutePlan, Stop, StopKind, TripRequest
 from terramind.schemas.base import LatLon
 
@@ -47,6 +47,7 @@ KIND: dict[str, StopKind] = {
 OUTDOOR = {"viewpoint", "ruins", "waterfall"}  # pointless after dark
 ON_THE_WAY = {"coffee_cart", "cafe"}  # a coffee on the drive, before the hike
 FOOD = {"restaurant", "cafe", "coffee_cart"}
+MAX_WAIT_FOR_OPENING = 45  # minutes worth waiting for a place that opens soon after we arrive
 
 Legs = dict[
     tuple[str, str], LegEstimate
@@ -150,8 +151,15 @@ def add_places(
         drive = _minutes(legs, prev, p.poi_id, where)
         arrive = t + timedelta(minutes=drive)
         dwell = DWELL.get(p.category, 30)
-        leave = arrive + timedelta(minutes=dwell)
         state = is_open(p.opening_hours, day, arrive.time(), dwell)
+        waited = None
+        if state == "closed" and (
+            opens := opens_within(p.opening_hours, day, arrive.time(), dwell, MAX_WAIT_FOR_OPENING)
+        ):
+            # Opens soon after we arrive: wait for it rather than drop it.
+            waited = datetime.combine(day, opens) - arrive
+            arrive, state = datetime.combine(day, opens), "open"
+        leave = arrive + timedelta(minutes=dwell)
         if state == "closed":
             dropped.append(f"{p.name}: סגור כשנגיע ({hhmm(arrive)})")
         elif p.category in OUTDOOR and sunset is not None and leave > sunset:
@@ -159,7 +167,12 @@ def add_places(
         elif limit is not None and leave > limit:
             dropped.append(f"{p.name}: לא נכנס ב-{req.day_hours:g} שעות היום")
         else:
-            last.append(_stop(p, arrive, drive, state))
+            stop = _stop(p, arrive, drive, state)
+            if waited:
+                stop = stop.model_copy(
+                    update={"note": f"נפתח ב-{hhmm(arrive)}: ממתינים {waited.seconds // 60} דק׳"}
+                )
+            last.append(stop)
             prev, t = p.poi_id, leave
 
     hike = list(plan.stops)

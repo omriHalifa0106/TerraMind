@@ -19,6 +19,10 @@ Rules:
   - Prefer places whose opening_hours are known and fit the trip day (REQUEST.trip_date); avoid places that
     are closed that day. Many places close on Saturday.
   - REQUEST.kosher_only: only places with kosher=true (the list is already filtered).
+- CURRENT PLAN is given when the user is editing an existing plan: keep its trail and its place_ids
+  (in the same order) and only apply what USER MESSAGE asks: add the place kind they ask for, remove what they
+  say to remove, replace what they say to replace. If the day is too short for everything, drop the place that
+  matters least to the request, not the one just asked for.
 - Do not compute times or distances yourself; the system calculates them from the map data, and drops a
   place that would be closed, after sunset (outdoor places), or beyond the day's length.
 - title: short, in the user's language. rationale: one or two sentences on why this trail.

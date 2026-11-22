@@ -114,6 +114,13 @@ async def presenter(state: TerraMindState, runtime: Runtime[TerraMindContext]) -
         else None,
         "chosen_trail": next((_facts(c) for c in candidates if plan and c.trail_id == plan.trail_id), None),
         "chosen_because": state.get("plan_rationale"),
+        # A follow-up in the same chat: what the previous plan was, so the answer can say what changed.
+        "follow_up": (prev := state.get("previous")) is not None,
+        "previous_plan": (
+            {"title": prev.plan.title, "stops": [st.name for st in prev.plan.stops]}
+            if prev and prev.plan
+            else None
+        ),
         "alternatives": [_facts(c) for c in candidates if not plan or c.trail_id != plan.trail_id][:4],
         # The road geometry is for the map; for the text it is only tokens.
         "plan": plan.model_copy(update={"drive_route": []}) if plan else None,

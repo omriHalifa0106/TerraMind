@@ -202,6 +202,17 @@ button:disabled { cursor: default; }
 .agent.done .avatar { background: var(--forest); color: var(--chalk); border: 2px solid var(--forest); animation: pop 0.35s ease; }
 .agent.done .avatar .num { background: var(--sun); color: var(--ink); }
 .agent.done .persona { color: var(--forest); }
+.agent.skip .avatar { background: #f1f3ef; color: #b3bfb6; border: 2px solid #e3e8e2; }
+.agent.skip .persona { color: #a3aea6; text-decoration: line-through; }
+.agent.skip .clock::after { content: "דולג"; font-family: var(--text); }
+.scope-note { padding: 9px 16px; font-size: 13.5px; line-height: 1.5; background: #e8f0f4; color: #1f5068; border-bottom: 1px solid #cfe0e8; }
+.scope-note.search { background: var(--mist); color: var(--ink-2); border-bottom-color: var(--sage); }
+.new-chat {
+  height: 30px; padding: 0 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  border: 1px solid rgba(245, 246, 242, 0.35); background: rgba(245, 246, 242, 0.1); color: var(--chalk);
+}
+.new-chat:hover:not(:disabled) { background: rgba(245, 246, 242, 0.2); }
+.new-chat:disabled { opacity: 0.4; }
 @keyframes spin { to { transform: rotate(360deg); } }
 @keyframes ping { 70% { box-shadow: 0 0 0 12px rgba(232, 163, 61, 0); } 100% { box-shadow: 0 0 0 0 rgba(232, 163, 61, 0); } }
 @keyframes pop { 50% { transform: scale(1.15); } }

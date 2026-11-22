@@ -13,7 +13,7 @@ from __future__ import annotations
 
 import operator
 from dataclasses import dataclass, field
-from typing import Annotated, NotRequired, TypedDict
+from typing import Annotated, Literal, NotRequired, TypedDict
 
 from langchain_core.messages import AnyMessage
 from langgraph.graph.message import add_messages
@@ -26,6 +26,7 @@ from terramind.schemas import (
     EvidenceChunk,
     FinalAnswer,
     NodeError,
+    PreviousTurn,
     RoutePlan,
     TrailCandidate,
     TripRequest,
@@ -44,12 +45,17 @@ class TerraMindState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]  # the user's message (+ the final answer)
     user_origin: NotRequired[Origin | None]  # "starting from", picked in the UI (not parsed from text)
     user_day_hours: NotRequired[float | None]  # day length picked in the UI (the text wins if it says)
+    previous: NotRequired[PreviousTurn | None]  # the chat's previous turn (conversation memory)
 
     # --- agent 1: request analysis ---
     request: NotRequired[TripRequest]
     clarification: NotRequired[str | None]  # set when the request cannot be planned (no region)
     named_trail_ids: NotRequired[list[str]]  # trails the user named explicitly ("נחל כזיב")
     assumptions: NotRequired[list[str]]  # defaults the system filled in (shown to the user)
+    # "replan": a follow-up that only changes the day (hours, places, start, origin): agent 4 re-plans
+    # the previous turn's safe trails, agents 2-3 are skipped. "search": search (and check) again.
+    scope: NotRequired[Literal["search", "replan"]]
+    excluded_trail_ids: NotRequired[list[str]]  # trails the user asked to replace ("a different trail")
 
     # --- agent 2: catalog search ---
     candidates: NotRequired[list[TrailCandidate]]
@@ -91,13 +97,17 @@ def approved(state: TerraMindState) -> list[CandidateAssessment]:
 
 
 def turn_input(
-    messages: list[AnyMessage], origin: Origin | None = None, day_hours: float | None = None
+    messages: list[AnyMessage],
+    origin: Origin | None = None,
+    day_hours: float | None = None,
+    previous: PreviousTurn | None = None,
 ) -> TerraMindState:
     """A typed graph input for one user message (accumulating channels start empty)."""
     return {
         "messages": messages,
         "user_origin": origin,
         "user_day_hours": day_hours,
+        "previous": previous,
         "assessments": [],
         "errors": [],
     }

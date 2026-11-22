@@ -94,3 +94,18 @@ def is_open(spec: str | None, on: date, at: time, minutes: int = 0) -> OpenState
     yesterday = week.get((on.weekday() - 1) % 7, [])
     spans = today + [(s - 24 * 60, e - 24 * 60) for s, e in yesterday if e > 24 * 60]
     return "open" if any(s <= start and end <= e for s, e in spans) else "closed"
+
+
+def opens_within(
+    spec: str | None, on: date, at: time, minutes: int, max_wait: int, step: int = 1
+) -> time | None:
+    """The earliest time within max_wait minutes of `at` from which the place is open for `minutes`
+    (None if it does not open in time, or its hours are unknown)."""
+    start = at.hour * 60 + at.minute
+    for wait in range(0, max_wait + 1, step):
+        t = start + wait
+        if t >= 24 * 60:
+            return None
+        if is_open(spec, on, time(t // 60, t % 60), minutes) == "open":
+            return time(t // 60, t % 60)
+    return None

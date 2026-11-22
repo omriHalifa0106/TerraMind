@@ -11,8 +11,9 @@ Anything not in the spec is removed, not kept "just in case".
 ## Status (2026-11-22)
 
 - Steps 1-2 done: cleanup; graph rebuilt as exactly 5 agents in `src/terramind/graph/nodes/`
-  (request_analyst, catalog_search, enrichment, route_planner, presenter). No checkpointer or memory:
-  one graph run per message. Verified with real Claude: ~25 s per request (was ~110 s).
+  (request_analyst, catalog_search, enrichment, route_planner, presenter). One graph run per message;
+  chat memory is the `conversations` table (not a LangGraph checkpointer: psycopg async fails on
+  Windows' default Proactor event loop). Verified with real Claude: ~25 s per request (was ~110 s).
 - Step 3 done: data pipeline (`ingestion/pipeline.py`, migration 003). Weather (Open-Meteo, batched,
   16 days per trailhead cell) and alerts (Mock Alerts API) are ingested on a schedule into
   `weather_forecasts`, `trail_status`, `trail_alerts`; every run is logged in `ingestion_runs`.
@@ -24,7 +25,9 @@ Anything not in the spec is removed, not kept "just in case".
   is sent with the message; agent 4 adds drive time, route and departure time to the plan.
 - Extension (user request, 2026-11-22): A places (`ingestion/places_loader.py` -> `pois` with day-plan
   categories; gis `find_places_near`), B day length + places around the hike (`day_plan.py`,
-  `opening_hours.py`; agent 4 chooses, code times/drops). Next: C remembering, editable chat (checkpointer).
+  `opening_hours.py`; agent 4 chooses, code times/drops). C remembering chat: `conversations` table (migration 004)
+  loaded/saved by the API around each run (`terramind/conversations.py`); agent 1 returns
+  request + change; `graph/scope.py` (code) decides "replan" (agents 2-3 skipped) vs "search".
 - Step 5: README rewritten in Hebrew (replaces docs/ARCHITECTURE.md). LangSmith: `terramind/observability`
   exports LANGSMITH_* from .env at startup (pydantic-settings does not, so local runs never traced
   before). Verifying a real trace still needs a real LANGSMITH_API_KEY in .env.

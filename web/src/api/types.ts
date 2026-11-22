@@ -163,7 +163,8 @@ export type AgentName = "request_analyst" | "catalog_search" | "enrichment" | "r
 
 /** Every SSE event the server can send: a discriminated union on `type`. */
 export type StreamEvent =
-  | { type: "start"; data: { run_id: string } }
+  | { type: "start"; data: { run_id: string; follow_up?: boolean } }
+  | { type: "scope"; data: { scope: "search" | "replan"; reason: string } }
   | { type: "node"; data: { node: AgentName; status: "start"; round?: number; relaxed?: boolean; candidates?: number } }
   | { type: "request"; data: { request: TripRequest } }
   | { type: "tool_calls"; data: { calls: { tool: string; args: Record<string, unknown> }[] } }

@@ -1,4 +1,4 @@
-import { useCallback, useReducer, useRef } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { streamChat } from "../api/stream";
 import type {
   AgentName,
@@ -12,7 +12,7 @@ import type {
 } from "../api/types";
 import { AGENT_ORDER, describeEvent, type TraceItem } from "../labels";
 
-export type AgentStatus = "wait" | "run" | "done";
+export type AgentStatus = "wait" | "run" | "done" | "skip";
 
 export interface AgentState {
   status: AgentStatus;
@@ -34,11 +34,13 @@ export interface VetoedTrail {
   reasons: string[];
 }
 
-/** One user message and everything the five agents did to answer it. Turns are independent. */
+/** One user message and everything the five agents did to answer it. */
 export interface Turn {
   id: number;
   query: string;
   status: "running" | "done" | "stopped";
+  followUp: boolean; // the server remembered this chat's previous turn
+  scope: { scope: "search" | "replan"; reason: string } | null; // what agent 1 decided to re-run
   agents: Record<AgentName, AgentState>;
   request: TripRequest | null;
   searchCalls: string[]; // tools agent 2's LLM chose (they run in parallel)
@@ -64,7 +66,8 @@ type Action =
   | { kind: "event"; event: StreamEvent; at: number }
   | { kind: "failed"; detail: string }
   | { kind: "finished"; aborted: boolean }
-  | { kind: "show"; turnId: number };
+  | { kind: "show"; turnId: number }
+  | { kind: "reset" };
 
 const freshAgents = (): Record<AgentName, AgentState> =>
   Object.fromEntries(AGENT_ORDER.map((n) => [n, { status: "wait", startedAt: null, seconds: 0, round: 1 }])) as Record<
@@ -76,6 +79,8 @@ const newTurn = (id: number, query: string): Turn => ({
   id,
   query,
   status: "running",
+  followUp: false,
+  scope: null,
   agents: freshAgents(),
   request: null,
   searchCalls: [],
@@ -109,14 +114,20 @@ function reducer(state: ChatState, action: Action): ChatState {
     }
     case "show":
       return { ...state, shownOnMap: action.turnId };
+    case "reset":
+      return { turns: [], busy: false, shownOnMap: null };
     case "failed":
       return onLast(state, (t) => ({ ...t, error: action.detail }));
     case "finished":
       return onLast({ ...state, busy: false }, (t) => {
-        // A stopped run leaves its running agent unfinished; a completed run closes it.
+        // A stopped run leaves its running agent unfinished; a completed run closes it, and the
+        // agents that never started were not needed (e.g. a follow-up that only re-plans the day).
         const status: AgentStatus = action.aborted ? "wait" : "done";
         const agents = { ...t.agents };
-        for (const n of AGENT_ORDER) if (agents[n].status === "run") agents[n] = { ...agents[n], status };
+        for (const n of AGENT_ORDER) {
+          if (agents[n].status === "run") agents[n] = { ...agents[n], status };
+          else if (agents[n].status === "wait" && !action.aborted) agents[n] = { ...agents[n], status: "skip" };
+        }
         return { ...t, agents, status: action.aborted ? "stopped" : "done" };
       });
     case "event":
@@ -129,6 +140,10 @@ function applyEvent(turn: Turn, ev: StreamEvent, at: number): Turn {
   const t: Turn = item ? { ...turn, log: [...turn.log, item] } : turn;
 
   switch (ev.type) {
+    case "start":
+      return { ...t, followUp: Boolean(ev.data.follow_up) };
+    case "scope":
+      return { ...t, scope: ev.data };
     case "node": {
       // An agent started. A second search round restarts agent 2, so later agents go back to waiting.
       const started = AGENT_ORDER.indexOf(ev.data.node);
@@ -189,9 +204,47 @@ export function vetoedTrails(candidates: Candidate[]): VetoedTrail[] {
     }));
 }
 
+const THREAD_KEY = "terramind.thread";
+const TURNS_KEY = "terramind.turns";
+const KEEP_TURNS = 12;
+
+/** One id per chat: the server remembers the chat under it (follow-ups edit the same trip). */
+function newThreadId(): string {
+  return crypto.randomUUID().replaceAll("-", "");
+}
+
+/** The chat as last shown, so a refresh does not lose it (the server holds the real memory). */
+function restore(): { threadId: string; turns: Turn[] } {
+  try {
+    const threadId = localStorage.getItem(THREAD_KEY);
+    const turns = JSON.parse(localStorage.getItem(TURNS_KEY) ?? "[]") as Turn[];
+    if (threadId && Array.isArray(turns)) {
+      return { threadId, turns: turns.map((t) => (t.status === "running" ? { ...t, status: "stopped" } : t)) };
+    }
+  } catch {
+    // storage blocked or corrupted: start a fresh chat
+  }
+  return { threadId: newThreadId(), turns: [] };
+}
+
+function persist(threadId: string, turns: Turn[]): void {
+  try {
+    localStorage.setItem(THREAD_KEY, threadId);
+    localStorage.setItem(TURNS_KEY, JSON.stringify(turns.slice(-KEEP_TURNS)));
+  } catch {
+    // storage full or blocked: the chat is still remembered by the server, just not redrawn on refresh
+  }
+}
+
 export function useChat(beforeSend?: () => Promise<void>) {
-  const [state, dispatch] = useReducer(reducer, { turns: [], busy: false, shownOnMap: null });
+  const [saved] = useState(restore);
+  const [threadId, setThreadId] = useState(saved.threadId);
+  const [state, dispatch] = useReducer(reducer, { turns: saved.turns, busy: false, shownOnMap: null });
   const abort = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    if (!state.busy) persist(threadId, state.turns);
+  }, [threadId, state.turns, state.busy]);
 
   const send = useCallback(
     async (text: string, origin: Origin | null = null, dayHours: number | null = null) => {
@@ -201,7 +254,7 @@ export function useChat(beforeSend?: () => Promise<void>) {
       dispatch({ kind: "send", text, at: Date.now() });
       try {
         await beforeSend?.();
-        for await (const event of streamChat(text, origin, dayHours, ctrl.signal)) {
+        for await (const event of streamChat(text, origin, dayHours, threadId, ctrl.signal)) {
           dispatch({ kind: "event", event, at: Date.now() });
         }
       } catch (err) {
@@ -211,12 +264,20 @@ export function useChat(beforeSend?: () => Promise<void>) {
         if (abort.current === ctrl) dispatch({ kind: "finished", aborted: ctrl.signal.aborted });
       }
     },
-    [beforeSend],
+    [beforeSend, threadId],
   );
 
   /** Closing the stream makes the server stop the run (it checks for disconnects). */
   const stop = useCallback(() => abort.current?.abort(), []);
   const showOnMap = useCallback((turnId: number) => dispatch({ kind: "show", turnId }), []);
 
-  return { state, send, stop, showOnMap };
+  /** A new chat: a new id, so the next message is a new trip (the old chat stays on the server). */
+  const newChat = useCallback(() => {
+    abort.current?.abort();
+    abort.current = null;
+    setThreadId(newThreadId());
+    dispatch({ kind: "reset" });
+  }, []);
+
+  return { state, send, stop, showOnMap, newChat };
 }

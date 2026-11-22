@@ -8,9 +8,13 @@ from terramind.config import get_settings
 from terramind.graph.state import TerraMindState, approved
 
 
-def after_request_analyst(state: TerraMindState) -> Literal["catalog_search", "__end__"]:
-    """No region (or the model failed): agent 1 already asked the user, so stop here."""
-    return "__end__" if state.get("clarification") else "catalog_search"  # "__end__" is LangGraph's END
+def after_request_analyst(state: TerraMindState) -> Literal["catalog_search", "route_planner", "__end__"]:
+    """No region (or the model failed): agent 1 already asked the user, so stop here ("__end__" is
+    LangGraph's END). A follow-up that only changes the day goes straight to agent 4, which re-plans
+    the trails agent 3 approved in the previous turn. Anything else searches (and checks) again."""
+    if state.get("clarification"):
+        return "__end__"
+    return "route_planner" if state.get("scope") == "replan" else "catalog_search"
 
 
 def after_enrichment(state: TerraMindState) -> Literal["route_planner", "catalog_search", "presenter"]:

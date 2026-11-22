@@ -36,6 +36,14 @@ export function AgentRun({ turn }: { turn: Turn }) {
 
   return (
     <section className={`run${running ? " live" : ""}`} aria-label="הסוכנים בעבודה">
+      {turn.followUp && turn.scope && (
+        <div className={`scope-note ${turn.scope.scope}`}>
+          <b>המשך לשיחה</b> · {turn.scope.reason}
+          {turn.scope.scope === "replan"
+            ? ". החוקר והשומר לא רצו שוב: המסלולים כבר נבדקו בהודעה הקודמת, והמתכנן בונה מחדש את היום."
+            : ". כל הסוכנים רצים מחדש."}
+        </div>
+      )}
       <Pipeline turn={turn} now={now} />
 
       <button type="button" className="run-toggle" onClick={() => setOpen(!expanded)} aria-expanded={expanded}>
@@ -138,7 +146,7 @@ function Step({ name, turn, now }: { name: AgentName; turn: Turn; now: number })
           <span className="engine">{info.engine}</span>
         </div>
         <span className={`state ${a.status}`}>
-          {a.status === "run" ? "עובד" : a.status === "done" ? "סיים" : "ממתין"}
+          {a.status === "run" ? "עובד" : a.status === "done" ? "סיים" : a.status === "skip" ? "דולג" : "ממתין"}
           {elapsed(a, now) && <span className="mono"> {elapsed(a, now)}</span>}
         </span>
       </div>
@@ -252,6 +260,7 @@ function body(name: AgentName, t: Turn): ReactNode {
                       {s.open_state === "open" ? "פתוח" : s.open_state === "unknown" ? "שעות פתיחה לא ידועות" : ""}
                     </span>
                   )}
+                  {s.place_id && s.note && <span className="place-meta">{s.note}</span>}
                 </span>
               </li>
             ))}

@@ -402,3 +402,9 @@ def test_day_plan_times_places_and_drops_what_does_not_fit() -> None:
     assert any("museum" in d and "5 שעות" in d for d in out.dropped_places)  # 07:25 + 5h = 12:25
     assert [s.order for s in out.stops] == list(range(len(out.stops)))
     assert out.day_end_time is not None and out.day_end_time > out.end_time
+
+    # A place opening soon after we arrive is waited for, not dropped.
+    lunch = place("lunch", "restaurant", "Sa 11:00-22:00")
+    waited = add_places(plan, [], [lunch], {}, req, sunset=None)
+    stop = next(s for s in waited.stops if s.place_id == "lunch")
+    assert stop.arrive_at == time(11, 0) and stop.open_state == "open" and "ממתינים" in (stop.note or "")
