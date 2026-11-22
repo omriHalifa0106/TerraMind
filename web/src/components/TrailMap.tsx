@@ -1,6 +1,6 @@
 import L from "leaflet";
 import { useEffect, useState } from "react";
-import { GeoJSON, MapContainer, Marker, Polyline, Popup, TileLayer, useMap } from "react-leaflet";
+import { GeoJSON, MapContainer, Marker, Polyline, Popup, TileLayer, Tooltip, useMap } from "react-leaflet";
 import { api } from "../api/client";
 import type { CandidateAssessment, RoutePlan, TrailFeature } from "../api/types";
 import type { VetoedTrail } from "../hooks/useChat";
@@ -11,7 +11,12 @@ const CHOSEN_STYLE = { color: "#1E4D3A", weight: 6, opacity: 0.95 };
 const VETO_STYLE = { color: "#B4442A", weight: 3, dashArray: "6 7", opacity: 0.85 };
 
 const DRIVE_STYLE = { color: "#2E6F8E", weight: 4, opacity: 0.75, dashArray: "2 8", lineCap: "round" as const };
-const originIcon = L.divIcon({ className: "", html: '<div class="origin-pin"></div>', iconSize: [18, 18] });
+const originIcon = L.divIcon({
+  className: "",
+  html: '<div class="origin-pin"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 2 12h3v8h5v-5h4v5h5v-8h3z"/></svg></div>',
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
+});
 
 const stopIcon = (n: number, last: boolean, kind: string, place: boolean) =>
   L.divIcon({
@@ -41,6 +46,7 @@ function FitToPlan({ plan, feature }: { plan: RoutePlan | null; feature: TrailFe
     if (!plan) return;
     const bounds = L.latLngBounds(plan.stops.map((s) => s.location));
     if (feature) bounds.extend(L.geoJSON(feature).getBounds());
+    if (plan.origin) bounds.extend(plan.origin); // the whole day: from home to the trail
     if (bounds.isValid()) map.fitBounds(bounds, { padding: [48, 48] });
   }, [map, plan, feature]);
   return null;
@@ -84,7 +90,11 @@ export function TrailMap({ plan, vetoed, chosen }: Props) {
         ))}
         {plan && plan.drive_route.length > 1 && <Polyline positions={plan.drive_route} pathOptions={DRIVE_STYLE} />}
         {plan?.origin && (
-          <Marker position={plan.origin} icon={originIcon}>
+          <Marker position={plan.origin} icon={originIcon} zIndexOffset={1000}>
+            <Tooltip permanent direction="top" offset={[0, -16]} className="origin-label">
+              {plan.origin_label ?? "נקודת היציאה"}
+              {plan.depart_at && ` · ${hhmm(plan.depart_at)}`}
+            </Tooltip>
             <Popup>
               <b>{plan.origin_label ?? "נקודת היציאה"}</b>
               {plan.depart_at && <div>יציאה ב-{hhmm(plan.depart_at)}</div>}
@@ -141,6 +151,12 @@ export function TrailMap({ plan, vetoed, chosen }: Props) {
             <i className="sw vetoed" />
             נפסל בבדיקת בטיחות
           </span>
+          {plan?.origin && (
+            <span>
+              <i className="sw origin" />
+              נקודת היציאה
+            </span>
+          )}
           {plan && plan.drive_route.length > 1 && (
             <span>
               <i className="sw drive" />

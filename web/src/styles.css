@@ -412,7 +412,13 @@ button:disabled { cursor: default; }
 .sw { display: inline-block; width: 24px; height: 0; border-top: 5px solid var(--forest); border-radius: 3px; margin-inline-end: 7px; }
 .sw.vetoed { border-top: 3px dashed var(--danger); }
 .sw.drive { border-top: 4px dotted var(--water); }
-.origin-pin { width: 18px; height: 18px; border-radius: 50%; background: var(--water); border: 3px solid var(--white); box-shadow: 0 0 0 3px rgba(46, 111, 142, 0.35); }
+.origin-pin {
+  width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; background: var(--water);
+  border: 3px solid var(--white); box-shadow: 0 0 0 4px rgba(46, 111, 142, 0.35), 0 2px 8px rgba(0, 0, 0, 0.3);
+}
+.origin-pin svg { width: 15px; height: 15px; fill: var(--white); }
+.leaflet-tooltip.origin-label { font-weight: 700; color: var(--water); border-color: var(--water); }
+.sw.origin { width: 12px; height: 12px; border-top: 0; background: var(--water); border-radius: 50%; vertical-align: middle; }
 .stop-pin {
   width: 28px; height: 28px; border-radius: 9px; display: grid; place-items: center; background: var(--forest);
   color: var(--chalk); font: 800 13px var(--display); border: 2px solid var(--chalk); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
