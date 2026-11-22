@@ -1,0 +1,27 @@
+{
+  "name": "kziv_closed",
+  "description": "Nahal Kziv is closed for maintenance; tests the trail-level veto loop.",
+  "closures": [
+    {
+      "match": [
+        "כזיב",
+        "kziv"
+      ],
+      "reason": "Closed for trail maintenance by the nature reserve authority"
+    }
+  ],
+  "alerts": [
+    {
+      "alert_id": "a-kziv-1",
+      "region": "upper_galilee",
+      "trail_match": [
+        "כזיב",
+        "kziv"
+      ],
+      "kind": "maintenance",
+      "severity": "critical",
+      "message": "Nahal Kziv trail closed until further notice"
+    }
+  ],
+  "crowding": []
+}

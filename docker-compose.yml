@@ -1,0 +1,74 @@
+x-py: &py
+  build: { context: ., dockerfile: docker/python.Dockerfile }
+  env_file: .env
+  environment:
+    DATABASE_URL: postgresql://terramind:terramind@db:5432/terramind
+    MOCK_ALERTS_URL: http://mock-alerts:8200
+    MCP_GIS_URL: http://mcp-gis:8101/mcp
+    MCP_KNOWLEDGE_URL: http://mcp-knowledge:8102/mcp
+    MCP_WEATHER_URL: http://mcp-weather:8103/mcp
+    MCP_ALERTS_URL: http://mcp-alerts:8104/mcp
+  profiles: ["full"]
+
+services:
+  db:
+    build: ./docker/postgres
+    environment:
+      POSTGRES_USER: terramind
+      POSTGRES_PASSWORD: terramind
+      POSTGRES_DB: terramind
+    ports: ["5433:5432"]   # host port 5433: avoids clashing with another local PostgreSQL
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U terramind -d terramind"]
+      interval: 5s
+      retries: 10
+
+  mock-alerts:
+    <<: *py
+    profiles: []   # always on
+    command: uvicorn services.mock_alerts_api.main:app --host 0.0.0.0 --port 8200
+    ports: ["8200:8200"]
+
+  mcp-gis:
+    <<: *py
+    depends_on:
+      db: { condition: service_healthy }
+    command: python -m mcp_servers.gis_server.server
+    ports: ["8101:8101"]
+
+  mcp-knowledge:
+    <<: *py
+    depends_on:
+      db: { condition: service_healthy }
+    command: python -m mcp_servers.knowledge_server.server
+    ports: ["8102:8102"]
+    volumes: ["hf-cache:/root/.cache/huggingface"]   # keep bge-m3 weights between runs
+
+  mcp-weather:
+    <<: *py
+    command: python -m mcp_servers.weather_server.server
+    ports: ["8103:8103"]
+
+  mcp-alerts:
+    <<: *py
+    depends_on: [mock-alerts]
+    command: python -m mcp_servers.alerts_server.server
+    ports: ["8104:8104"]
+
+  api:
+    <<: *py
+    command: uvicorn terramind.api.main:app --host 0.0.0.0 --port 8000
+    ports: ["8000:8000"]
+    depends_on:
+      db: { condition: service_healthy }
+      mcp-gis: { condition: service_started }
+      mcp-knowledge: { condition: service_started }
+      mcp-weather: { condition: service_started }
+      mcp-alerts: { condition: service_started }
+
+volumes:
+  pgdata:
+  hf-cache:

@@ -1,0 +1,74 @@
+[project]
+name = "terramind"
+version = "0.1.0"
+description = "Autonomous multi-agent hiking route planner (LangGraph + MCP + Hybrid RAG)"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "langgraph>=1.2,<2",
+    "langgraph-checkpoint-postgres>=3.2,<4",
+    "langchain-core>=1.0",
+    "langchain-openai>=1.8,<2",
+    "fastmcp>=4.2,<5",
+    "fastapi>=0.165",
+    "sse-starlette>=3.7",
+    "uvicorn[standard]>=0.54",
+    "asyncpg>=0.32",
+    "psycopg[binary,pool]>=3.3",
+    "pydantic>=2.12",
+    "pydantic-settings>=2.16",
+    "httpx>=0.28",
+    "cachetools>=6",
+    "langsmith>=0.15",
+    "pyyaml>=6",
+    "langchain-anthropic>=1.0",
+]
+
+[project.optional-dependencies]
+# Heavy: pulls torch. Install with `uv sync --extra embeddings` for real bge-m3 vectors.
+embeddings = ["sentence-transformers>=5"]
+
+[dependency-groups]
+dev = [
+    "pytest>=9",
+    "pytest-asyncio>=1.5",
+    "respx>=0.23",
+    "mypy>=2",
+    "ruff>=0.17",
+    "types-cachetools",
+    "types-pyyaml",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/terramind", "mcp_servers", "services", "ingestion", "evals"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
+testpaths = ["tests"]
+markers = ["db: needs the PostgreSQL test database (TERRAMIND_TEST_DATABASE_URL)"]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "ASYNC", "RUF", "SIM"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # Hebrew text in strings/comments of data files
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+plugins = ["pydantic.mypy"]
+mypy_path = "src"
+explicit_package_bases = true
+exclude = ["^tests/", "^build/"]
+
+[[tool.mypy.overrides]]
+module = ["sentence_transformers.*", "sse_starlette.*", "asyncpg.*", "respx.*"]
+ignore_missing_imports = true

@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="he" dir="rtl">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>TerraMind · תכנון מסלולים</title>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+  <link rel="stylesheet" href="/static/styles.css" />
+</head>
+<body>
+  <header class="topbar">
+    <div class="brand">
+      <span class="logo">▲</span>
+      <div>
+        <h1>TerraMind</h1>
+        <p>מתכנן מסלולים אוטונומי · גליל, מירון, גולן</p>
+      </div>
+    </div>
+    <div class="controls">
+      <label for="scenario">תרחיש בדיקה</label>
+      <select id="scenario" title="Mock Alerts API scenario"></select>
+      <span id="health" class="health">…</span>
+    </div>
+  </header>
+
+  <main class="layout">
+    <section class="panel">
+      <div id="chat" class="chat" aria-live="polite"></div>
+
+      <details class="trace" open>
+        <summary>מה הסוכנים עושים <span id="trace-count"></span></summary>
+        <ol id="trace" class="trace-list"></ol>
+      </details>
+
+      <form id="composer" class="composer">
+        <textarea id="input" rows="2" placeholder="למשל: מסלול מים קל בגליל העליון לשבת, עם שני ילדים בני 6" required></textarea>
+        <button id="send" type="submit">שליחה</button>
+      </form>
+    </section>
+
+    <section class="map-wrap">
+      <div id="map"></div>
+      <div class="legend">
+        <span><i class="sw chosen"></i>מסלול נבחר</span>
+        <span><i class="sw vetoed"></i>נפסל בבדיקת בטיחות</span>
+      </div>
+    </section>
+  </main>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/marked@12/marked.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/dompurify@3/dist/purify.min.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,59 @@
+# Each case: a user message, the Mock Alerts scenario to activate, and what a correct run looks like.
+# forbidden_trail_patterns: substrings (HE/EN) that must never appear in the chosen trail's name.
+# expected_tools: "server.tool" names that a correct run must call (recall is measured on these).
+
+- id: he_water_galilee
+  message: "מסלול מים בגליל העליון למחר"
+  scenario: normal
+  expect_plan: true
+  expected_tools: [gis.search_trails, knowledge.hybrid_search, weather.get_forecast,
+                   alerts.get_trail_status, alerts.list_active_alerts]
+
+- id: kziv_closed_veto
+  message: "אני רוצה לטייל בנחל כזיב מחר, מסלול מים"
+  scenario: kziv_closed
+  expect_plan: true
+  expect_veto: true
+  forbidden_trail_patterns: ["כזיב", "kziv"]
+  expected_tools: [gis.search_trails, knowledge.hybrid_search, alerts.get_trail_status]
+
+- id: golan_flood_warning
+  message: "Easy water hike in the Golan tomorrow with two kids age 6"
+  scenario: golan_flood_warning
+  expect_veto: true
+  forbidden_trail_patterns: ["אל על", "el al", "יהודיה", "yehudiya", "משושים", "meshushim", "zavitan", "זויתן", "gamla", "גמלא"]
+  expected_tools: [gis.search_trails, alerts.list_active_alerts]
+
+- id: everything_closed_fallback
+  message: "Hike near Meron on Saturday"
+  scenario: everything_closed
+  expect_plan: false
+  expect_veto: true
+  expected_tools: [gis.search_trails, alerts.get_trail_status]
+
+- id: family_easy_meron
+  message: "מסלול קל למשפחה עם ילדים בני 5 ליד מירון בשבת"
+  scenario: normal
+  expect_plan: true
+  forbidden_difficulty: hard
+  expected_tools: [gis.search_trails, knowledge.hybrid_search, weather.get_forecast]
+
+- id: crowded_holiday
+  message: "Water hike in the Upper Galilee tomorrow"
+  scenario: crowded_holiday
+  expect_plan: true
+  expected_tools: [gis.search_trails, alerts.get_trail_status]
+
+- id: smalltalk
+  message: "שלום!"
+  scenario: normal
+  expect_plan: false
+  expected_route: ask_clarification
+  expected_tools: []
+
+- id: missing_region
+  message: "I want a nice hike tomorrow"
+  scenario: normal
+  expect_plan: false
+  expected_route: ask_clarification
+  expected_tools: []

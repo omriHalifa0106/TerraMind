@@ -1,0 +1,23 @@
+{
+  "name": "everything_closed",
+  "description": "Region-wide fire closure; tests the safe_fallback after 3 attempts.",
+  "closures": [
+    {
+      "match": [
+        "*"
+      ],
+      "reason": "Region-wide closure due to wildfire risk"
+    }
+  ],
+  "alerts": [
+    {
+      "alert_id": "a-fire",
+      "region": null,
+      "trail_match": [],
+      "kind": "fire",
+      "severity": "critical",
+      "message": "Extreme fire risk: all nature reserves in the north are closed"
+    }
+  ],
+  "crowding": []
+}

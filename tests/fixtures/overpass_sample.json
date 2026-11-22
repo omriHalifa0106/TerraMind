@@ -1,0 +1,329 @@
+{
+ "version": 0.6,
+ "generator": "SYNTHETIC TEST FIXTURE - not real OSM data",
+ "elements": [
+  {
+   "type": "relation",
+   "id": 9000001,
+   "tags": {
+    "route": "hiking",
+    "name": "שביל נחל כזיב",
+    "name:he": "שביל נחל כזיב",
+    "name:en": "Nahal Kziv Trail",
+    "osmc:symbol": "red:white:red_bar",
+    "colour": "red"
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 90000010,
+     "role": "",
+     "geometry": [
+      {
+       "lat": 33.05,
+       "lon": 35.18
+      },
+      {
+       "lat": 33.048571,
+       "lon": 35.19
+      },
+      {
+       "lat": 33.047143,
+       "lon": 35.2
+      },
+      {
+       "lat": 33.045714,
+       "lon": 35.21
+      },
+      {
+       "lat": 33.044286,
+       "lon": 35.22
+      },
+      {
+       "lat": 33.042857,
+       "lon": 35.23
+      },
+      {
+       "lat": 33.041429,
+       "lon": 35.24
+      },
+      {
+       "lat": 33.04,
+       "lon": 35.25
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "relation",
+   "id": 9000002,
+   "tags": {
+    "route": "hiking",
+    "name": "Mount Meron Summit Loop",
+    "name:he": "מסלול פסגת הר מירון",
+    "name:en": "Mount Meron Summit Loop"
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 90000020,
+     "role": "",
+     "geometry": [
+      {
+       "lat": 32.997,
+       "lon": 35.421
+      },
+      {
+       "lat": 33.001,
+       "lon": 35.419928
+      },
+      {
+       "lat": 33.003928,
+       "lon": 35.417
+      },
+      {
+       "lat": 33.005,
+       "lon": 35.413
+      },
+      {
+       "lat": 33.003928,
+       "lon": 35.409
+      },
+      {
+       "lat": 33.001,
+       "lon": 35.406072
+      },
+      {
+       "lat": 32.997,
+       "lon": 35.405
+      },
+      {
+       "lat": 32.993,
+       "lon": 35.406072
+      },
+      {
+       "lat": 32.990072,
+       "lon": 35.409
+      },
+      {
+       "lat": 32.989,
+       "lon": 35.413
+      },
+      {
+       "lat": 32.990072,
+       "lon": 35.417
+      },
+      {
+       "lat": 32.993,
+       "lon": 35.419928
+      },
+      {
+       "lat": 32.997,
+       "lon": 35.421
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "relation",
+   "id": 9000003,
+   "tags": {
+    "route": "hiking",
+    "name": "נחל עמוד",
+    "name:he": "נחל עמוד",
+    "name:en": "Nahal Amud"
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 90000030,
+     "role": "",
+     "geometry": [
+      {
+       "lat": 32.99,
+       "lon": 35.47
+      },
+      {
+       "lat": 32.98,
+       "lon": 35.474444
+      },
+      {
+       "lat": 32.97,
+       "lon": 35.478889
+      },
+      {
+       "lat": 32.96,
+       "lon": 35.483333
+      },
+      {
+       "lat": 32.95,
+       "lon": 35.487778
+      },
+      {
+       "lat": 32.94,
+       "lon": 35.492222
+      },
+      {
+       "lat": 32.93,
+       "lon": 35.496667
+      },
+      {
+       "lat": 32.92,
+       "lon": 35.501111
+      },
+      {
+       "lat": 32.91,
+       "lon": 35.505556
+      },
+      {
+       "lat": 32.9,
+       "lon": 35.51
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "relation",
+   "id": 9000004,
+   "tags": {
+    "route": "hiking",
+    "name": "Nahal El Al",
+    "name:he": "נחל אל על",
+    "name:en": "Nahal El Al"
+   },
+   "members": [
+    {
+     "type": "way",
+     "ref": 90000040,
+     "role": "",
+     "geometry": [
+      {
+       "lat": 32.81,
+       "lon": 35.7
+      },
+      {
+       "lat": 32.808571,
+       "lon": 35.708571
+      },
+      {
+       "lat": 32.807143,
+       "lon": 35.717143
+      },
+      {
+       "lat": 32.805714,
+       "lon": 35.725714
+      },
+      {
+       "lat": 32.804286,
+       "lon": 35.734286
+      },
+      {
+       "lat": 32.802857,
+       "lon": 35.742857
+      },
+      {
+       "lat": 32.801429,
+       "lon": 35.751429
+      },
+      {
+       "lat": 32.8,
+       "lon": 35.76
+      }
+     ]
+    }
+   ]
+  },
+  {
+   "type": "relation",
+   "id": 9000005,
+   "tags": {
+    "route": "hiking",
+    "ref": "no-name-test"
+   },
+   "members": []
+  },
+  {
+   "type": "node",
+   "id": 8000001,
+   "lat": 33.0465,
+   "lon": 35.205,
+   "tags": {
+    "natural": "spring",
+    "name": "עין תמיר",
+    "name:he": "עין תמיר"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000002,
+   "lat": 33.044,
+   "lon": 35.223,
+   "tags": {
+    "historic": "castle",
+    "name": "Montfort"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000003,
+   "lat": 33.05,
+   "lon": 35.18,
+   "tags": {
+    "amenity": "parking"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000004,
+   "lat": 33.005,
+   "lon": 35.413,
+   "tags": {
+    "tourism": "viewpoint",
+    "name": "תצפית פסגת מירון"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000005,
+   "lat": 32.8052,
+   "lon": 35.73,
+   "tags": {
+    "waterway": "waterfall",
+    "name": "Black Waterfall"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000006,
+   "lat": 32.805,
+   "lon": 35.745,
+   "tags": {
+    "waterway": "waterfall",
+    "name": "White Waterfall"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000007,
+   "lat": 32.945,
+   "lon": 35.49,
+   "tags": {
+    "historic": "ruins",
+    "name": "Old flour mill"
+   }
+  },
+  {
+   "type": "node",
+   "id": 8000008,
+   "lat": 32.9,
+   "lon": 35.5,
+   "tags": {
+    "shop": "bakery",
+    "name": "ignored"
+   }
+  }
+ ]
+}

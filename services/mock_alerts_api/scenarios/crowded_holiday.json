@@ -1,0 +1,17 @@
+{
+  "name": "crowded_holiday",
+  "description": "Holiday crowding on popular water trails; tests soft (warning) issues.",
+  "closures": [],
+  "alerts": [],
+  "crowding": [
+    {
+      "match": [
+        "כזיב",
+        "kziv",
+        "עמוד",
+        "amud"
+      ],
+      "level": "high"
+    }
+  ]
+}
