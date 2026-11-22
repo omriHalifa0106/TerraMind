@@ -102,13 +102,31 @@ export interface ToolCall {
   ms: number;
 }
 
+/** Agent 1's output: the free text turned into search parameters (schemas/trip.py). */
+export interface TripRequest {
+  region: string | null;
+  trip_date: string | null;
+  start_time: string | null;
+  max_duration_hours: number | null;
+  difficulty: string | null;
+  trail_types: string[];
+  max_length_km: number | null;
+  max_drive_minutes: number | null;
+  origin: LatLon | null;
+  group: { adults: number; children: number; min_child_age: number | null; fitness: string; pace_kmh: number };
+  must_have: string[];
+  avoid: string[];
+  semantic_query: string;
+  missing_fields: string[];
+}
+
 export type AgentName = "request_analyst" | "catalog_search" | "enrichment" | "route_planner" | "presenter";
 
 /** Every SSE event the server can send: a discriminated union on `type`. */
 export type StreamEvent =
   | { type: "start"; data: { run_id: string } }
   | { type: "node"; data: { node: AgentName; status: "start"; round?: number; relaxed?: boolean; candidates?: number } }
-  | { type: "request"; data: { request: Record<string, unknown> } }
+  | { type: "request"; data: { request: TripRequest } }
   | { type: "tool_calls"; data: { calls: { tool: string; args: Record<string, unknown> }[] } }
   | { type: "candidates"; data: { trails: { trail_id: string; name: string; km: number }[]; chunks: number } }
   | { type: "assessment"; data: { assessment: CandidateAssessment } }
