@@ -1,6 +1,6 @@
 """In-process harness: the real MCP servers in memory + the Mock Alerts API via ASGI transport.
 
-No ports, no subprocesses: used by the eval runner, the CLI demo and the integration tests.
+No ports, no subprocesses: used by the integration tests.
 """
 
 from __future__ import annotations

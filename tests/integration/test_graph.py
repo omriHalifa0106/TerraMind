@@ -11,13 +11,13 @@ from langchain_core.messages import BaseMessage, HumanMessage
 from langchain_core.runnables import RunnableConfig
 from pydantic import BaseModel
 
-from evals.harness import inprocess_gateway, set_scenario
 from mcp_servers.weather_server import server as weather_server
 from terramind.llm.heuristic import HeuristicLLM
 from terramind.llm.router import Task
 from terramind.mcp_client.client import start_call_log
 from terramind.runtime import AppRuntime, open_runtime
 from terramind.schemas import TripRequest
+from tests.harness import inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
 

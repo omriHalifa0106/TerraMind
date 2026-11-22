@@ -8,11 +8,11 @@ import pytest
 import respx
 from fastmcp import Client
 
-from evals.harness import inprocess_gateway, set_scenario
 from mcp_servers.gis_server.server import mcp as gis
 from mcp_servers.knowledge_server.server import mcp as knowledge
 from mcp_servers.weather_server import server as weather_server
 from terramind.mcp_client.client import McpGateway
+from tests.harness import inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
 

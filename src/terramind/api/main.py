@@ -1,4 +1,4 @@
-"""FastAPI app: SSE chat endpoint, GeoJSON for the map, static Leaflet frontend.
+"""FastAPI app: SSE chat endpoint, GeoJSON for the map, and the built TypeScript frontend.
 
 Run locally with `uv run python -m scripts.run_api` (sets the event loop psycopg needs on Windows).
 """
@@ -14,7 +14,6 @@ from typing import Any
 
 import httpx
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
@@ -24,7 +23,7 @@ from terramind.config import get_settings
 from terramind.runtime import AppRuntime, open_runtime
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
-FRONTEND = Path(__file__).resolve().parents[3] / "frontend"
+FRONTEND = Path(__file__).resolve().parents[3] / "web" / "dist"
 
 
 @asynccontextmanager
@@ -116,9 +115,12 @@ async def health(request: Request) -> dict[str, Any]:
     }
 
 
-@app.get("/")
-async def index() -> FileResponse:
-    return FileResponse(FRONTEND / "index.html")
+# The TypeScript frontend (web/) is built into web/dist by `npm run build`. In development,
+# `npm run dev` serves it on port 5174 instead and proxies API calls here.
+if (FRONTEND / "index.html").is_file():
+    app.mount("/", StaticFiles(directory=FRONTEND, html=True), name="frontend")
+else:
 
-
-app.mount("/static", StaticFiles(directory=FRONTEND), name="static")
+    @app.get("/")
+    async def index() -> dict[str, str]:
+        return {"detail": "frontend not built: run `npm run build` in web/, or `npm run dev` there"}

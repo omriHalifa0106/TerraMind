@@ -5,9 +5,9 @@ import json
 import httpx
 import pytest
 
-from evals.harness import inprocess_gateway, set_scenario
 from terramind.api.main import app
 from terramind.runtime import open_runtime
+from tests.harness import inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
 

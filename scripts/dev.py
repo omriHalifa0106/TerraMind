@@ -98,7 +98,7 @@ def main() -> None:
     preflight()
     env = {**os.environ, "PYTHONUNBUFFERED": "1"}
     # On Windows each child gets its own process group, so CTRL_BREAK stops it without killing us.
-    flags = subprocess.CREATE_NEW_PROCESS_GROUP if os.name == "nt" else 0  # type: ignore[attr-defined]
+    flags = subprocess.CREATE_NEW_PROCESS_GROUP if sys.platform == "win32" else 0
     procs: Procs = []
     try:
         for svc in SERVICES:
@@ -118,7 +118,7 @@ def main() -> None:
     finally:
         for _, p in reversed(procs):
             if p.poll() is None:
-                p.send_signal(signal.CTRL_BREAK_EVENT if os.name == "nt" else signal.SIGINT)  # type: ignore[attr-defined]
+                p.send_signal(signal.CTRL_BREAK_EVENT if sys.platform == "win32" else signal.SIGINT)
         for _, p in procs:
             try:
                 p.wait(timeout=10)

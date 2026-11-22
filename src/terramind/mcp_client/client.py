@@ -2,7 +2,7 @@
 
 We do not use langchain-mcp-adapters here: its current release requires `mcp<2`, while
 FastMCP 4 requires `mcp>=2`. This thin gateway gives us the same thing with one dependency:
-typed calls, per-call timeouts, failures returned as data, a call log for evals, and
+typed calls, per-call timeouts, failures returned as data, a per-run call log, and
 LangChain tools generated from the MCP schemas for native tool calling.
 """
 
