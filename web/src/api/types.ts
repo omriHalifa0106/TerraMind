@@ -5,7 +5,18 @@
 
 export type LatLon = [number, number];
 
-export type StopKind = "parking" | "trailhead" | "poi" | "viewpoint" | "water" | "food" | "end";
+export type StopKind =
+  | "parking"
+  | "trailhead"
+  | "poi"
+  | "viewpoint"
+  | "water"
+  | "food"
+  | "end"
+  | "coffee"
+  | "attraction"
+  | "winery"
+  | "farm";
 
 export interface Stop {
   order: number;
@@ -15,6 +26,13 @@ export interface Stop {
   arrive_at: string | null;
   dwell_minutes: number;
   note: string | null;
+  // Day-plan places only:
+  place_id?: string | null;
+  category?: string | null;
+  drive_minutes?: number | null;
+  opening_hours?: string | null;
+  open_state?: "open" | "closed" | "unknown" | null;
+  kosher?: boolean | null;
 }
 
 export interface RoutePlan {
@@ -31,6 +49,8 @@ export interface RoutePlan {
   origin: LatLon | null;
   origin_label: string | null;
   depart_at: string | null;
+  day_end_time?: string | null;
+  dropped_places?: string[];
   start_time: string;
   end_time: string;
   alternatives_considered: string[];
@@ -123,6 +143,9 @@ export interface TripRequest {
   trip_date: string | null;
   start_time: string | null;
   max_duration_hours: number | null;
+  day_hours: number | null;
+  want_places: string[];
+  kosher_only: boolean;
   difficulty: string | null;
   trail_types: string[];
   max_length_km: number | null;

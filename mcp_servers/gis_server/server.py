@@ -17,6 +17,7 @@ from terramind.schemas import Difficulty, LegEstimate
 from terramind.schemas.tool_results import (
     GeocodeResult,
     GeoJsonResult,
+    NearbyPlacesResult,
     Place,
     PoiResult,
     RegionInfo,
@@ -152,6 +153,33 @@ async def estimate_leg(
     if mode == "drive" and (leg := await routing.osrm_drive((from_lat, from_lon), (to_lat, to_lon))):
         return leg
     return queries.estimate_leg((from_lat, from_lon), (to_lat, to_lon), mode, pace_kmh)
+
+
+@mcp.tool
+async def find_places_near(
+    lat: float | None = None,
+    lon: float | None = None,
+    route: list[tuple[float, float]] | None = None,
+    radius_km: float = 8.0,
+    categories: list[str] | None = None,
+    limit: int = 20,
+) -> NearbyPlacesResult:
+    """Places for a day out near a point (e.g. the trailhead) or along a route (e.g. the drive, as
+    [lat, lon] pairs): restaurant, cafe, coffee_cart, attraction, museum, winery, brewery, farm,
+    viewpoint, ruins, waterfall. Nearest first, with opening hours / kosher when mapped in OSM."""
+    allowed = list(queries.DAY_PLACE_CATEGORIES)
+    wanted = [c for c in (categories or allowed) if c in allowed] or allowed
+    try:
+        ref = queries.place_ref_wkt((lat, lon) if lat is not None and lon is not None else None, route)
+    except ValueError as exc:
+        return NearbyPlacesResult(status="error", detail=str(exc))
+    try:
+        places = await queries.find_places_near(
+            await get_pool(), ref, wanted, max(0.2, min(radius_km, 30.0)), max(1, min(limit, 50))
+        )
+    except DB_ERRORS as exc:
+        return NearbyPlacesResult(status="error", detail=f"database error: {type(exc).__name__}")
+    return NearbyPlacesResult(status="ok" if places else "empty", places=places)
 
 
 @mcp.tool

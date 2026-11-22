@@ -53,6 +53,7 @@ class OriginIn(BaseModel):
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
     origin: OriginIn | None = None  # "starting from" (browser location or a geocoded address)
+    day_hours: float | None = Field(default=None, gt=0, le=14)  # day length picker in the UI
 
 
 @app.post("/chat/stream")
@@ -66,7 +67,7 @@ async def chat_stream(body: ChatRequest, request: Request) -> EventSourceRespons
             if body.origin
             else None
         )
-        async for event in stream_turn(rt, body.message, origin):
+        async for event in stream_turn(rt, body.message, origin, body.day_hours):
             if await request.is_disconnected():
                 break  # the user pressed stop or left: stop the run instead of burning tokens
             yield event

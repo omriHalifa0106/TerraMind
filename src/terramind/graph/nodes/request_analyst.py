@@ -85,6 +85,8 @@ async def request_analyst(state: TerraMindState, runtime: Runtime[TerraMindConte
         req = req.model_copy(
             update={"origin": (origin["lat"], origin["lon"]), "origin_label": origin["label"]}
         )
+    if req.day_hours is None and (hours := state.get("user_day_hours")):
+        req = req.model_copy(update={"day_hours": hours})  # the UI picker; a length in the text wins
     if req.trip_date is None:
         req = req.model_copy(update={"trip_date": today + timedelta(days=1)})
         notes.append(f"No date given: planned for tomorrow ({today + timedelta(days=1):%Y-%m-%d}).")

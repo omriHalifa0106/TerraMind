@@ -15,6 +15,22 @@ class Difficulty(StrEnum):
     HARD = "hard"
 
 
+# Places a day plan can include besides the trail (gis.find_places_near categories).
+PlaceKind = Literal[
+    "restaurant",
+    "cafe",
+    "coffee_cart",
+    "attraction",
+    "museum",
+    "winery",
+    "brewery",
+    "farm",
+    "viewpoint",
+    "ruins",
+    "waterfall",
+]
+
+
 class TrailType(StrEnum):
     WATER = "water"
     VIEWPOINT = "viewpoint"
@@ -40,7 +56,22 @@ class TripRequest(Frozen):
     region: str | None = Field(default=None, description="e.g. 'Upper Galilee', 'Golan', 'Carmel'")
     trip_date: date | None = None
     start_time: time | None = None
-    max_duration_hours: float | None = Field(default=None, gt=0, le=14)
+    max_duration_hours: float | None = Field(
+        default=None, gt=0, le=14, description="Longest WALK the user wants ('מסלול של שעתיים' -> 2)"
+    )
+    day_hours: float | None = Field(
+        default=None,
+        gt=0,
+        le=14,
+        description="Length of the whole day out, hike + places, not counting the drive from home "
+        "('יום של 6 שעות' -> 6, 'חצי יום' -> 4, 'יום שלם' -> 9)",
+    )
+    want_places: list[PlaceKind] = Field(
+        default_factory=list,
+        description="Places the user asked for besides the hike ('עם מסעדה' -> restaurant, "
+        "'עגלת קפה' -> coffee_cart, 'יקב' -> winery, 'מוזיאון' -> museum)",
+    )
+    kosher_only: bool = Field(default=False, description="Only kosher food places ('כשר')")
     difficulty: Difficulty | None = None
     trail_types: list[TrailType] = Field(default_factory=list)
     max_length_km: float | None = Field(default=None, gt=0, le=40)

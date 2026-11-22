@@ -43,6 +43,7 @@ class Origin(TypedDict):
 class TerraMindState(TypedDict):
     messages: Annotated[list[AnyMessage], add_messages]  # the user's message (+ the final answer)
     user_origin: NotRequired[Origin | None]  # "starting from", picked in the UI (not parsed from text)
+    user_day_hours: NotRequired[float | None]  # day length picked in the UI (the text wins if it says)
 
     # --- agent 1: request analysis ---
     request: NotRequired[TripRequest]
@@ -89,6 +90,14 @@ def approved(state: TerraMindState) -> list[CandidateAssessment]:
     return [by_id[c.trail_id] for c in state.get("candidates", []) if c.trail_id in by_id]
 
 
-def turn_input(messages: list[AnyMessage], origin: Origin | None = None) -> TerraMindState:
+def turn_input(
+    messages: list[AnyMessage], origin: Origin | None = None, day_hours: float | None = None
+) -> TerraMindState:
     """A typed graph input for one user message (accumulating channels start empty)."""
-    return {"messages": messages, "user_origin": origin, "assessments": [], "errors": []}
+    return {
+        "messages": messages,
+        "user_origin": origin,
+        "user_day_hours": day_hours,
+        "assessments": [],
+        "errors": [],
+    }

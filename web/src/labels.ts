@@ -46,10 +46,10 @@ export const AGENT_INFO: Record<AgentName, AgentInfo> = {
   route_planner: {
     persona: "המתכנן",
     title: "תכנון המסלול",
-    role: "בוחר את המסלול הטוב מבין הבטוחים, מסדר את התחנות, מחשב זמני הליכה ונסיעה בכבישים אמיתיים, ומתי לצאת מהבית.",
+    role: "בוחר את המסלול הטוב מבין הבטוחים ואת המקומות ליום (מסעדה, יקב, עגלת קפה...), מסדר הכל בזמן, בודק שעות פתיחה, ומחשב נסיעות בכבישים אמיתיים.",
     working: "מסדר תחנות ומחשב זמני נסיעה והליכה…",
     engine: "Claude · פלט מובנה · PostGIS · OSRM",
-    tools: ["get_trail_details", "find_pois_near_trail", "estimate_leg"],
+    tools: ["get_trail_details", "find_pois_near_trail", "estimate_leg", "find_places_near"],
   },
   presenter: {
     persona: "המסביר",
@@ -80,6 +80,25 @@ export const STOP_KIND: Record<StopKind, string> = {
   water: "מים",
   food: "אוכל",
   end: "סיום",
+  coffee: "קפה",
+  attraction: "אטרקציה",
+  winery: "יקב / מבשלה",
+  farm: "חווה",
+};
+
+/** Hebrew names of day-plan place categories (gis.find_places_near). */
+export const PLACE_LABEL: Record<string, string> = {
+  restaurant: "מסעדה",
+  cafe: "בית קפה",
+  coffee_cart: "עגלת קפה",
+  attraction: "אטרקציה",
+  museum: "מוזיאון",
+  winery: "יקב",
+  brewery: "מבשלה",
+  farm: "חווה",
+  viewpoint: "תצפית",
+  ruins: "אתר היסטורי",
+  waterfall: "מפל",
 };
 
 const WORDS: Record<string, string> = {
@@ -112,7 +131,10 @@ export function requestChips(r: TripRequest): { label: string; value: string }[]
   add("יציאה", r.start_time && hhmm(r.start_time));
   add("קושי", r.difficulty && word(r.difficulty));
   add("סוג", r.trail_types.length > 0 && r.trail_types.map(word).join(", "));
-  add("משך", r.max_duration_hours != null && `עד ${r.max_duration_hours} שעות`);
+  add("הליכה", r.max_duration_hours != null && `עד ${r.max_duration_hours} שעות`);
+  add("אורך היום", r.day_hours != null && `${r.day_hours} שעות`);
+  add("מקומות", r.want_places.length > 0 && r.want_places.map((p) => PLACE_LABEL[p] ?? p).join(", "));
+  add("כשרות", r.kosher_only && "כשר בלבד");
   add("אורך", r.max_length_km != null && `עד ${r.max_length_km} ק״מ`);
   add("נסיעה", r.max_drive_minutes != null && `עד ${r.max_drive_minutes} דק׳`);
   add("יוצאים מ", r.origin_label);

@@ -13,8 +13,12 @@ const VETO_STYLE = { color: "#B4442A", weight: 3, dashArray: "6 7", opacity: 0.8
 const DRIVE_STYLE = { color: "#2E6F8E", weight: 4, opacity: 0.75, dashArray: "2 8", lineCap: "round" as const };
 const originIcon = L.divIcon({ className: "", html: '<div class="origin-pin"></div>', iconSize: [18, 18] });
 
-const stopIcon = (n: number, last: boolean) =>
-  L.divIcon({ className: "", html: `<div class="stop-pin${last ? " end" : ""}">${n}</div>`, iconSize: [28, 28] });
+const stopIcon = (n: number, last: boolean, kind: string, place: boolean) =>
+  L.divIcon({
+    className: "",
+    html: `<div class="stop-pin${last && !place ? " end" : ""}${place ? ` place k-${kind}` : ""}">${n}</div>`,
+    iconSize: [28, 28],
+  });
 
 /** Loads a trail's GeoJSON from the API (null until loaded or if missing). */
 function useTrail(trailId: string | undefined): TrailFeature | null {
@@ -93,7 +97,7 @@ export function TrailMap({ plan, vetoed, chosen }: Props) {
           <Marker
             key={`${plan.plan_id}-${i}`}
             position={s.location}
-            icon={stopIcon(i + 1, i === plan.stops.length - 1)}
+            icon={stopIcon(i + 1, s.kind === "end", s.kind, Boolean(s.place_id))}
           >
             <Popup>
               <b>{s.name}</b>

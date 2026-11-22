@@ -1,0 +1,80 @@
+{
+ "elements": [
+  {
+   "type": "node",
+   "id": 9500001,
+   "lat": 33.053,
+   "lon": 35.185,
+   "tags": {
+    "amenity": "restaurant",
+    "name": "מסעדת הנחל",
+    "diet:kosher": "yes",
+    "cuisine": "grill",
+    "opening_hours": "Su-Th 12:00-22:00"
+   }
+  },
+  {
+   "type": "way",
+   "id": 9500002,
+   "center": {
+    "lat": 33.047,
+    "lon": 35.176
+   },
+   "tags": {
+    "amenity": "cafe",
+    "name": "עגלת הקפה של כזיב"
+   }
+  },
+  {
+   "type": "node",
+   "id": 9500003,
+   "lat": 33.06,
+   "lon": 35.19,
+   "tags": {
+    "amenity": "cafe",
+    "name": "קפה הגליל",
+    "street_vendor": "no"
+   }
+  },
+  {
+   "type": "node",
+   "id": 9500004,
+   "lat": 33.07,
+   "lon": 35.21,
+   "tags": {
+    "craft": "winery",
+    "name": "יקב ההר",
+    "opening_hours": "Fr 10:00-14:00"
+   }
+  },
+  {
+   "type": "node",
+   "id": 9500005,
+   "lat": 33.055,
+   "lon": 35.17,
+   "tags": {
+    "shop": "kiosk",
+    "name": "קיוסק דודו"
+   }
+  },
+  {
+   "type": "node",
+   "id": 9500006,
+   "lat": 32.8,
+   "lon": 35.7,
+   "tags": {
+    "tourism": "museum",
+    "name": "מוזיאון הגולן"
+   }
+  },
+  {
+   "type": "node",
+   "id": 9500007,
+   "lat": 33.051,
+   "lon": 35.181,
+   "tags": {
+    "amenity": "restaurant"
+   }
+  }
+ ]
+}

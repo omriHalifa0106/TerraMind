@@ -39,12 +39,17 @@ TYPE_TO_TAG: dict[TrailType, str] = {
 }
 
 
+DAY_SHARE_FOR_HIKE = 0.6  # of a whole day out, when only the day's length is given
+
+
 def search_args(req: TripRequest, exclude: list[str], relaxed: bool) -> dict[str, Any]:
     """The PostGIS search the code would run by itself (fallback). Round 2 relaxes soft filters."""
     pace = req.group.pace_kmh
     max_km = req.max_length_km
     if max_km is None and req.max_duration_hours:
         max_km = round(req.max_duration_hours * pace * 0.75, 1)  # leave time for stops
+    elif max_km is None and req.day_hours:
+        max_km = round(req.day_hours * DAY_SHARE_FOR_HIKE * pace * 0.75, 1)  # the rest is for places
     near_lat, near_lon = req.origin if req.origin else (None, None)
     return {
         "region": req.region,

@@ -5,6 +5,7 @@ import { AGENT_INFO, AGENT_ORDER, hhmm, hoursMinutes } from "../labels";
 import { AgentRun } from "./AgentRun";
 import { AgentIcon, Alert, Logo, MapPin, Send } from "./icons";
 import { Markdown } from "./Markdown";
+import { HoursPicker } from "./HoursPicker";
 import { OriginPicker } from "./OriginPicker";
 
 const EXAMPLES = [
@@ -19,12 +20,25 @@ interface Props {
   mapTurnId: number | null;
   origin: Origin | null;
   onOriginChange: (o: Origin | null) => void;
+  dayHours: number | null;
+  onDayHoursChange: (v: number | null) => void;
   onSend: (text: string) => void;
   onStop: () => void;
   onShowOnMap: (turnId: number) => void;
 }
 
-export function Chat({ turns, busy, mapTurnId, origin, onOriginChange, onSend, onStop, onShowOnMap }: Props) {
+export function Chat({
+  turns,
+  busy,
+  mapTurnId,
+  origin,
+  onOriginChange,
+  dayHours,
+  onDayHoursChange,
+  onSend,
+  onStop,
+  onShowOnMap,
+}: Props) {
   const scroller = useRef<HTMLDivElement>(null);
   const stick = useRef(true); // follow new output only while the user is at the bottom
 
@@ -51,6 +65,7 @@ export function Chat({ turns, busy, mapTurnId, origin, onOriginChange, onSend, o
       </div>
       <div className="composer-wrap">
         <OriginPicker origin={origin} onChange={onOriginChange} />
+        <HoursPicker value={dayHours} onChange={onDayHoursChange} />
         <Composer busy={busy} onSend={onSend} onStop={onStop} />
       </div>
     </section>
@@ -145,6 +160,11 @@ function PlanCard({ turn, onMap, onShowOnMap }: { turn: Turn; onMap: boolean; on
           {p.walk_km.toFixed(1)} ק״מ · {hoursMinutes(p.walk_minutes)} שעות הליכה · {hhmm(p.start_time)}–
           {hhmm(p.end_time)}
         </span>
+        {p.day_end_time && (
+          <span className="stats">
+            {p.stops.filter((s) => s.place_id).length} מקומות מסביב למסלול · היום מסתיים ב-<b>{hhmm(p.day_end_time)}</b>
+          </span>
+        )}
         {p.drive_minutes != null && p.depart_at && (
           <span className="stats drive">
             יוצאים מ{p.origin_label ?? "נקודת היציאה"} ב-<b>{hhmm(p.depart_at)}</b> · נסיעה{" "}

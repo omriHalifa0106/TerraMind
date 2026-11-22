@@ -21,6 +21,7 @@ if TEST_DB:
     os.environ["DATABASE_URL"] = TEST_DB
 
 FIXTURE = Path(__file__).parent / "fixtures" / "overpass_sample.json"
+PLACES_FIXTURE = Path(__file__).parent / "fixtures" / "places_sample.json"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -38,13 +39,14 @@ async def loaded_db() -> AsyncIterator[str]:
     assert TEST_DB
     import asyncpg
 
-    from ingestion import derive_attributes, osm_loader, seed_knowledge
+    from ingestion import derive_attributes, osm_loader, places_loader, seed_knowledge
     from scripts.migrate import migrate
 
     await migrate(TEST_DB)
     await osm_loader.run(FIXTURE, refresh=False, dsn=TEST_DB)
     await derive_attributes.run(TEST_DB)
     await seed_knowledge.run(seed_knowledge.DEFAULT_FILE, TEST_DB)
+    await places_loader.run(PLACES_FIXTURE, dsn=TEST_DB)
     yield TEST_DB
     from mcp_servers.common.db import close_pool
 

@@ -178,3 +178,20 @@ async def test_closures_match_every_trail_name(rt: AppRuntime) -> None:
         )
     assert status is not None and status.is_open is False
     assert any(a.kind == "maintenance" for a in alerts)
+
+
+async def test_a_day_with_places_around_the_hike(rt: AppRuntime) -> None:
+    """Hours and places asked for: agent 4 adds them after the hike (here by the code's defaults, as the
+    fake model picks none), with opening-hours state; closed places are dropped with the reason."""
+    await set_scenario("normal")
+    day = GALILEE_WATER.model_copy(update={"day_hours": 8, "want_places": ["restaurant", "coffee_cart"]})
+    llm = FakeLLM(day)
+    v = await run(rt, llm, "יום של 8 שעות בנחל כזיב, עם מסעדה ועגלת קפה")  # named: chosen first
+    plan = v["final"].plan
+    assert plan is not None and plan.trail_id == KZIV and "PLACES BY TRAIL" in llm.prompts["route_planner"]
+    places = [s for s in plan.stops if s.place_id]
+    cart = next(s for s in places if s.category == "coffee_cart")
+    assert cart.open_state == "unknown" and cart.arrive_at > plan.end_time  # no hours mapped; after the hike
+    restaurant_kept = any(s.category == "restaurant" for s in places)
+    assert restaurant_kept or any("סגור" in d for d in plan.dropped_places)  # depends on tomorrow's weekday
+    assert plan.day_end_time is not None and [s.order for s in plan.stops] == list(range(len(plan.stops)))

@@ -7,7 +7,7 @@ from typing import Any, Literal
 from pydantic import Field
 
 from terramind.schemas.base import Frozen
-from terramind.schemas.retrieval import EvidenceChunk, PointOfInterest, TrailCandidate
+from terramind.schemas.retrieval import EvidenceChunk, NearbyPlace, PointOfInterest, TrailCandidate
 from terramind.schemas.safety import TrailAlert, TrailStatus
 
 Status = Literal["ok", "empty", "error", "unavailable"]
@@ -82,3 +82,9 @@ class GeocodeResult(Frozen):
     status: Status
     detail: str | None = None
     places: list[Place] = Field(default_factory=list)
+
+
+class NearbyPlacesResult(Frozen):
+    status: Status
+    detail: str | None = None
+    places: list[NearbyPlace] = Field(default_factory=list)

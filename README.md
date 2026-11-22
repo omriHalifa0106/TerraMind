@@ -137,6 +137,17 @@ flowchart LR
 - **בקוד:** סדר התחנות לפי המרחק לאורך השביל, זמני הליכה לפי קצב הקבוצה, ושעת הסיום. אם נבחרה נקודת
   יציאה, זמן הנסיעה מגיע מ-OSRM דרך הכלי `gis.estimate_leg`, ומתוכו מחושבת שעת היציאה מהבית.
 - **הגנה:** אם המודל בחר מסלול שלא אושר, הקוד מחליף אותו במסלול הבטוח המוביל.
+- **יום שלם מסביב למסלול:** כשהמשתמש נותן אורך יום ("יום של 6 שעות", או בבורר בממשק), או מבקש מקומות
+  ("עם מסעדה", "יקב", "עגלת קפה"), הסוכן מחפש מקומות ליד כל מועמד (`gis.find_places_near`). את קפה הדרך
+  הוא מחפש לאורך מסלול הנסיעה מהבית. ה-LLM בוחר עד 4 מקומות. הקוד (`terramind/day_plan.py`) קובע מתי
+  מגיעים לכל אחד ובודק אם הוא נכנס:
+  - **קפה בדרך** נכנס לפני המסלול, ושעת היציאה מהבית מוקדמת בהתאם.
+  - **כל השאר** אחרי המסלול, עם זמן נסיעה מ-OSRM בין המקומות ומשך ביקור קבוע לכל סוג מקום.
+  - **שעות פתיחה** נבדקות לפי התגית `opening_hours` של OSM (`terramind/opening_hours.py`). מקום סגור
+    בשעת ההגעה יוצא מהתוכנית, וזה חשוב במיוחד בשבת.
+  - **מקומות פתוחים** (תצפית, אתר היסטורי) נכנסים רק אם מסיימים בהם לפני השקיעה.
+  - **אורך היום:** מה שלא נכנס בשעות שנקבעו יוצא מהתוכנית.
+  - **שקיפות:** כל מקום שיצא נרשם עם הסיבה (`dropped_places`), ושעות פתיחה לא ידועות מוצגות במפורש.
 
 ### סוכן 5: הצגת התוצאה (`presenter.py`)
 
@@ -152,7 +163,7 @@ flowchart LR
 
 | שרת | פורט | כלים | מקור הנתונים |
 | --- | --- | --- | --- |
-| `gis` | 8101 | `search_trails`, `find_trails_by_name`, `get_trail_details`, `find_pois_near_trail`, `get_trail_geojson`, `list_regions`, `estimate_leg`, `geocode` | PostGIS, OSRM, Nominatim |
+| `gis` | 8101 | `search_trails`, `find_trails_by_name`, `get_trail_details`, `find_pois_near_trail`, `get_trail_geojson`, `list_regions`, `estimate_leg`, `geocode`, `find_places_near` | PostGIS, OSRM, Nominatim |
 | `knowledge` | 8102 | `hybrid_search`, `get_trail_notes` | pgvector + חיפוש טקסט מלא |
 | `weather` | 8103 | `get_forecast`, `get_forecast_batch`, `get_daylight` | טבלת `weather_forecasts` (מהצינור), ואם חסר: Open-Meteo |
 | `alerts` | 8104 | `get_trail_status`, `list_active_alerts` | טבלאות `trail_status`, `trail_alerts` (מהצינור) |
@@ -170,7 +181,7 @@ PostgreSQL 17 עם PostGIS ו-pgvector, בקונטיינר (`docker compose`, פ
 | טבלה | מה יש בה | מי כותב | מי קורא |
 | --- | --- | --- | --- |
 | `trails` | 102 שבילים: גיאומטריה, נקודת התחלה, אורך, קושי, תגיות | `ingestion/osm_loader`, `derive_attributes` | gis |
-| `pois` | 1,751 נקודות עניין (מעיינות, תצפיות, חורבות, חניות) | `osm_loader` | gis |
+| `pois` | נקודות עניין לאורך השבילים (מעיינות, תצפיות, חורבות, חניות), ומקומות ליום (מסעדות, בתי קפה, עגלות קפה, אטרקציות, מוזיאונים, יקבים, מבשלות, חוות) עם שעות פתיחה וכשרות מ-OSM | `osm_loader`, `places_loader` | gis |
 | `knowledge_chunks` | תיאורים וטיפים + הטמעה (vector 1024) + `tsvector` | `seed_knowledge` | knowledge |
 | `weather_forecasts` | תחזית יומית לכל משבצת של כקילומטר, 16 ימים קדימה | צינור הנתונים | weather |
 | `trail_status` | פתוח או סגור, ועומס צפוי, לכל שביל | צינור הנתונים | alerts |
@@ -236,6 +247,7 @@ uv run python -m scripts.migrate
 uv run python -m ingestion.osm_loader        # שבילים ונקודות עניין מ-OpenStreetMap
 uv run python -m ingestion.derive_attributes # קושי, תגיות, מעגליות
 uv run python -m ingestion.seed_knowledge    # תיאורים וטיפים ל-RAG (בפעם הראשונה מוריד את bge-m3)
+uv run python -m ingestion.places_loader     # מסעדות, בתי קפה, עגלות קפה, אטרקציות, יקבים וחוות
 uv run python -m ingestion.pipeline --once   # מזג אוויר והתראות
 
 # הממשק:
@@ -274,7 +286,7 @@ uv run python -m scripts.dev                 # -> http://127.0.0.1:8000
 ```powershell
 docker compose exec db createdb -U terramind terramind_test      # פעם אחת
 $env:TERRAMIND_TEST_DATABASE_URL = "postgresql://terramind:terramind@localhost:5433/terramind_test"
-uv run pytest                                                    # 52 בדיקות
+uv run pytest                                                    # 56 בדיקות
 uv run ruff check . ; uv run mypy src mcp_servers services ingestion scripts
 cd web; npm run typecheck
 ```
@@ -320,3 +332,7 @@ tests/              unit/, integration/, fakes.py, harness.py
   הארוך במאגר הוא כ-15 ק״מ. סוכן 2 לא מציע מסלול ארוך מ-25 ק״מ (`MAX_DAY_HIKE_KM`). זו הגנה בקוד, והמודל
   לא יכול לעקוף אותה. שביל שהמשתמש ביקש בשמו עדיין נבדק, וסוכן 3 מסביר שהוא ארוך מדי ליום אחד.
 - **Nominatim** הוא שירות ציבורי עם מגבלת קצב. לשימוש רחב צריך שרת גיאוקודינג עצמאי.
+- **עגלות קפה:** לא נמצא API ציבורי לעגלות קפה בישראל. אתרים כמו CoffeeTrail ממפים מאות עגלות, אבל לא
+  מפרסמים API. ב-OpenStreetMap ממופות מעט עגלות (קפה שמסומן street_vendor, או ששמו "עגלת קפה"), ואלה
+  נטענות. אפשר לחבר מקור עשיר יותר ב-`places_loader` אם יתקבל אישור שימוש.
+- **שעות פתיחה וכשרות** הן רק מה שממופה ב-OSM. כשאין מידע, התוכנית אומרת "שעות פתיחה לא ידועות" ולא מנחשת.

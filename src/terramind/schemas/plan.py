@@ -8,7 +8,19 @@ from pydantic import Field
 from terramind.schemas.base import Frozen, LatLon
 from terramind.schemas.safety import IssueCode
 
-StopKind = Literal["parking", "trailhead", "poi", "viewpoint", "water", "food", "end"]
+StopKind = Literal[
+    "parking",
+    "trailhead",
+    "poi",
+    "viewpoint",
+    "water",
+    "food",
+    "end",
+    "coffee",
+    "attraction",
+    "winery",
+    "farm",  # day-plan places before / after the hike
+]
 
 
 class Stop(Frozen):
@@ -19,6 +31,13 @@ class Stop(Frozen):
     arrive_at: time | None = None
     dwell_minutes: int = Field(default=0, ge=0)
     note: str | None = None
+    # Day-plan places only (not trail stops):
+    place_id: str | None = None
+    category: str | None = None  # restaurant, coffee_cart, winery...
+    drive_minutes: int | None = None  # drive from the previous stop
+    opening_hours: str | None = None  # as mapped in OSM
+    open_state: Literal["open", "closed", "unknown"] | None = None  # at arrival, for the whole visit
+    kosher: bool | None = None
 
 
 class RoutePlan(Frozen):
@@ -35,6 +54,8 @@ class RoutePlan(Frozen):
     origin: LatLon | None = None
     origin_label: str | None = None
     depart_at: time | None = None  # when to leave home to reach the trailhead at start_time
+    day_end_time: time | None = None  # end of the last place after the hike (None: hike only)
+    dropped_places: list[str] = Field(default_factory=list)  # chosen places left out, with why
     start_time: time
     end_time: time
     alternatives_considered: list[str] = Field(default_factory=list)

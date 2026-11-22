@@ -10,7 +10,7 @@ import asyncpg
 
 from terramind.geo import DRIVE_DETOUR, DRIVE_KMH, WALK_DETOUR, haversine_km
 from terramind.regions import Region
-from terramind.schemas import Difficulty, LegEstimate, PointOfInterest, TrailCandidate
+from terramind.schemas import Difficulty, LegEstimate, NearbyPlace, PointOfInterest, TrailCandidate
 
 # Requested difficulty -> acceptable trail difficulties (an "easy" request never gets "hard").
 DIFFICULTY_ALLOWED: dict[Difficulty, list[str]] = {
@@ -18,6 +18,9 @@ DIFFICULTY_ALLOWED: dict[Difficulty, list[str]] = {
     Difficulty.MODERATE: ["easy", "moderate"],
     Difficulty.HARD: ["easy", "moderate", "hard"],
 }
+
+# What osm_loader stores for trails (the walking stops). Everything else in `pois` is a day-plan place.
+TRAIL_POI_CATEGORIES = ("spring", "waterfall", "viewpoint", "parking", "picnic", "ruins", "drinking_water")
 
 SEARCH_SQL = """
 SELECT t.trail_id, t.name, t.name_he, t.region, t.length_km, t.elevation_gain_m, t.difficulty,
@@ -147,7 +150,7 @@ SELECT p.poi_id, coalesce(p.name_he, p.name) AS name, p.category, ST_Y(p.geom) A
        ST_Distance(p.geom::geography, m.trailhead::geography) AS from_start_m
 FROM m
 JOIN pois p ON ST_DWithin(m.geom::geography, p.geom::geography, $2)
-WHERE ($3::text[] IS NULL OR p.category = ANY($3::text[]))
+WHERE p.category = ANY($3::text[])
 ORDER BY coalesce(
     CASE WHEN m.single THEN m.len_m * CASE WHEN m.reversed THEN 1 - ST_LineLocatePoint(m.line, p.geom)
                                            ELSE ST_LineLocatePoint(m.line, p.geom) END END,
@@ -163,7 +166,9 @@ async def find_pois_near_trail(
     categories: list[str] | None,
     limit: int,
 ) -> list[PointOfInterest]:
-    rows = await conn.fetch(POIS_SQL, trail_id, buffer_m, categories, limit)
+    # Trail stops only: day-plan places (food, wineries...) have their own tool, find_places_near.
+    wanted = [c for c in (categories or TRAIL_POI_CATEGORIES) if c in TRAIL_POI_CATEGORIES]
+    rows = await conn.fetch(POIS_SQL, trail_id, buffer_m, wanted or list(TRAIL_POI_CATEGORIES), limit)
     return [
         PointOfInterest(
             poi_id=r["poi_id"],
@@ -212,3 +217,71 @@ def estimate_leg(
         km = straight * DRIVE_DETOUR
         minutes = math.ceil(km / DRIVE_KMH * 60)
     return LegEstimate(mode=mode, distance_km=round(km, 2), minutes=minutes)
+
+
+# Day-plan places (ingestion/places_loader.py) plus the trail POI kinds worth a stop on the way.
+DAY_PLACE_CATEGORIES = (
+    "restaurant",
+    "cafe",
+    "coffee_cart",
+    "attraction",
+    "museum",
+    "winery",
+    "brewery",
+    "farm",
+    "viewpoint",
+    "ruins",
+    "waterfall",
+)
+
+PLACES_SQL = """
+WITH ref AS (SELECT ST_GeomFromText($1, 4326)::geography AS g)
+SELECT p.poi_id, coalesce(p.name_he, p.name) AS name, p.category,
+       ST_Y(p.geom) AS lat, ST_X(p.geom) AS lon,
+       ST_Distance(p.geom::geography, ref.g) / 1000.0 AS distance_km,
+       p.raw_tags->>'opening_hours' AS opening_hours,
+       p.raw_tags->>'diet:kosher' AS kosher,
+       p.raw_tags->>'cuisine' AS cuisine,
+       coalesce(p.raw_tags->>'website', p.raw_tags->>'contact:website') AS website
+FROM pois p, ref
+WHERE p.category = ANY($2::text[])
+  AND coalesce(p.name_he, p.name) IS NOT NULL
+  AND ST_DWithin(p.geom::geography, ref.g, $3)
+ORDER BY distance_km
+LIMIT $4
+"""
+
+
+def place_ref_wkt(point: tuple[float, float] | None, route: list[tuple[float, float]] | None) -> str:
+    """WKT of what to search around: a route line (lat/lon pairs) if given, else a point."""
+    if route and len(route) >= 2:
+        return "LINESTRING(" + ", ".join(f"{lon} {lat}" for lat, lon in route) + ")"
+    if point is None:
+        raise ValueError("a point or a route is required")
+    return f"POINT({point[1]} {point[0]})"
+
+
+def _kosher(value: str | None) -> bool | None:
+    if value in ("yes", "only"):
+        return True
+    return False if value == "no" else None
+
+
+async def find_places_near(
+    conn: asyncpg.Connection | asyncpg.Pool, ref_wkt: str, categories: list[str], radius_km: float, limit: int
+) -> list[NearbyPlace]:
+    rows = await conn.fetch(PLACES_SQL, ref_wkt, categories, radius_km * 1000, limit)
+    return [
+        NearbyPlace(
+            poi_id=r["poi_id"],
+            name=r["name"],
+            category=r["category"],
+            location=(r["lat"], r["lon"]),
+            distance_km=round(r["distance_km"], 1),
+            opening_hours=r["opening_hours"],
+            kosher=_kosher(r["kosher"]),
+            cuisine=r["cuisine"],
+            website=r["website"],
+        )
+        for r in rows
+    ]

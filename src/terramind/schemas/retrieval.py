@@ -42,6 +42,20 @@ class PointOfInterest(Frozen):
     along_trail: bool = False
 
 
+class NearbyPlace(Frozen):
+    """A place for the rest of the day: food, coffee cart, attraction, winery, viewpoint..."""
+
+    poi_id: str
+    name: str
+    category: str
+    location: LatLon
+    distance_km: float  # from the point, or from the route line when searching along a drive
+    opening_hours: str | None = None  # OSM opening_hours as mapped; None = unknown
+    kosher: bool | None = None  # from diet:kosher; None = unknown
+    cuisine: str | None = None
+    website: str | None = None
+
+
 class LegEstimate(Frozen):
     mode: Literal["walk", "drive"]
     distance_km: float

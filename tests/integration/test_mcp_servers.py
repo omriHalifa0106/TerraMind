@@ -153,3 +153,24 @@ async def test_drive_leg_uses_osrm_and_falls_back_and_geocode() -> None:
         places = await call(gis, "geocode", {"query": "חיפה"})
         assert places["status"] == "ok" and places["places"][0]["label"] == "חיפה, נפת חיפה, מחוז חיפה"
     routing.set_client(None)
+
+
+async def test_places_near_trailhead_and_along_a_route(loaded_db: str) -> None:
+    """Day-plan places: carts told apart from cafes, kosher/hours from OSM tags, nameless dropped."""
+    near = await call(gis, "find_places_near", {"lat": 33.05, "lon": 35.18, "radius_km": 3})
+    by_name = {p["name"]: p for p in near["places"]}
+    assert by_name["עגלת הקפה של כזיב"]["category"] == "coffee_cart"
+    assert by_name["קפה הגליל"]["category"] == "cafe"
+    assert by_name["מסעדת הנחל"]["kosher"] is True and by_name["מסעדת הנחל"]["opening_hours"]
+    assert "קיוסק דודו" not in by_name  # a kiosk that is not a coffee cart is not a stop
+    assert [p["distance_km"] for p in near["places"]] == sorted(p["distance_km"] for p in near["places"])
+
+    food = await call(
+        gis, "find_places_near", {"lat": 33.05, "lon": 35.18, "radius_km": 3, "categories": ["restaurant"]}
+    )
+    assert {p["category"] for p in food["places"]} == {"restaurant"}
+
+    # Along a drive from the Golan to Kziv: the museum near the start counts, at ~0 km from the line.
+    drive = await call(gis, "find_places_near", {"route": [[32.80, 35.70], [33.05, 35.18]], "radius_km": 1})
+    assert "מוזיאון הגולן" in {p["name"] for p in drive["places"]}
+    assert (await call(gis, "find_places_near", {}))["status"] == "error"  # nothing to search around

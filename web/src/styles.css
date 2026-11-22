@@ -314,6 +314,12 @@ button:disabled { cursor: default; }
 .verdict.ok { background: var(--forest); color: var(--chalk); }
 .verdict.bad { background: var(--danger); color: var(--white); animation: pop 0.35s ease; }
 .skipped { margin: 2px 0 0; font-size: 12.5px; color: var(--muted); }
+.mini-stops li.place::before { background: var(--sun); }
+.kind-tag { font-style: normal; font-size: 11px; font-weight: 700; margin-inline-start: 6px; padding: 1px 6px; border-radius: 6px; background: var(--sun-soft); color: var(--sun-ink); }
+.place-meta { display: block; font-size: 12px; color: var(--muted); }
+.hours { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 6px 16px 0; font-size: 13.5px; }
+.hours-btn { padding: 3px 11px; border-radius: 999px; border: 1px solid var(--sage-line); background: var(--white); color: var(--ink-2); font-size: 13px; }
+.hours-btn.on { background: var(--forest); border-color: var(--forest); color: var(--chalk); font-weight: 700; }
 .reasons { grid-column: 1 / -1; font-size: 12.5px; color: var(--danger-ink); }
 
 .mini-stops { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 2px; border-inline-start: 2px solid var(--sage); }
@@ -401,6 +407,12 @@ button:disabled { cursor: default; }
   color: var(--chalk); font: 800 13px var(--display); border: 2px solid var(--chalk); box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 .stop-pin.end { background: var(--sun); color: var(--ink); }
+.stop-pin.place { border-radius: 50%; }
+.stop-pin.k-food { background: #b4442a; }
+.stop-pin.k-coffee { background: #7a4a08; }
+.stop-pin.k-winery { background: #6b2d5c; }
+.stop-pin.k-attraction { background: var(--water); }
+.stop-pin.k-farm { background: #5f7a1e; }
 .leaflet-bar a { width: 36px !important; height: 36px !important; line-height: 36px !important; color: var(--ink) !important; }
 .leaflet-bar { border: 1px solid var(--sage-line) !important; border-radius: 12px !important; overflow: hidden; box-shadow: none !important; }
 .leaflet-popup-content-wrapper { border-radius: 14px; }

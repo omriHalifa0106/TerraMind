@@ -28,7 +28,7 @@ def sse(event: str, data: Any) -> dict[str, str]:
 
 
 async def stream_turn(
-    rt: AppRuntime, message: str, origin: Origin | None = None
+    rt: AppRuntime, message: str, origin: Origin | None = None, day_hours: float | None = None
 ) -> AsyncIterator[dict[str, str]]:
     run_id = f"run-{uuid.uuid4().hex[:12]}"
     config: RunnableConfig = {
@@ -41,7 +41,7 @@ async def stream_turn(
     yield sse("start", {"run_id": run_id})
     try:
         async for mode, chunk in rt.graph.astream(
-            turn_input([HumanMessage(content=message)], origin),
+            turn_input([HumanMessage(content=message)], origin, day_hours),
             config,
             context=rt.context,
             stream_mode=["updates", "custom"],

@@ -1,7 +1,7 @@
 import { useEffect, useState, type ReactNode } from "react";
 import type { AgentName, CandidateAssessment, IssueCode } from "../api/types";
 import type { AgentState, Candidate, Turn } from "../hooks/useChat";
-import { AGENT_INFO, AGENT_ORDER, TOOL_LABEL, hhmm, requestChips, toolOwner } from "../labels";
+import { AGENT_INFO, AGENT_ORDER, PLACE_LABEL, TOOL_LABEL, hhmm, requestChips, toolOwner } from "../labels";
 import { AgentIcon, Check, Chevron } from "./icons";
 
 /** Re-renders every 100 ms while `active`, so running agents show a live timer. */
@@ -239,12 +239,26 @@ function body(name: AgentName, t: Turn): ReactNode {
         <>
           <ol className="mini-stops">
             {t.plan.stops.map((s, i) => (
-              <li key={i}>
+              <li key={i} className={s.place_id ? "place" : undefined}>
                 <span className="mono">{hhmm(s.arrive_at)}</span>
-                {s.name}
+                <span>
+                  {s.name}
+                  {s.category && <em className="kind-tag">{PLACE_LABEL[s.category] ?? s.category}</em>}
+                  {s.kosher && <em className="kind-tag">כשר</em>}
+                  {s.place_id && (
+                    <span className="place-meta">
+                      {s.drive_minutes != null && `נסיעה ${s.drive_minutes} דק׳ · `}
+                      {s.dwell_minutes} דק׳ במקום ·{" "}
+                      {s.open_state === "open" ? "פתוח" : s.open_state === "unknown" ? "שעות פתיחה לא ידועות" : ""}
+                    </span>
+                  )}
+                </span>
               </li>
             ))}
           </ol>
+          {(t.plan.dropped_places ?? []).length > 0 && (
+            <p className="skipped">לא נכנסו לתוכנית: {(t.plan.dropped_places ?? []).join(" · ")}</p>
+          )}
           <DriveLine t={t} />
           {t.rationale && (
             <div className="quote">

@@ -194,14 +194,14 @@ export function useChat(beforeSend?: () => Promise<void>) {
   const abort = useRef<AbortController | null>(null);
 
   const send = useCallback(
-    async (text: string, origin: Origin | null = null) => {
+    async (text: string, origin: Origin | null = null, dayHours: number | null = null) => {
       abort.current?.abort();
       const ctrl = new AbortController();
       abort.current = ctrl;
       dispatch({ kind: "send", text, at: Date.now() });
       try {
         await beforeSend?.();
-        for await (const event of streamChat(text, origin, ctrl.signal)) {
+        for await (const event of streamChat(text, origin, dayHours, ctrl.signal)) {
           dispatch({ kind: "event", event, at: Date.now() });
         }
       } catch (err) {

@@ -115,7 +115,8 @@ async def presenter(state: TerraMindState, runtime: Runtime[TerraMindContext]) -
         "chosen_trail": next((_facts(c) for c in candidates if plan and c.trail_id == plan.trail_id), None),
         "chosen_because": state.get("plan_rationale"),
         "alternatives": [_facts(c) for c in candidates if not plan or c.trail_id != plan.trail_id][:4],
-        "plan": plan,
+        # The road geometry is for the map; for the text it is only tokens.
+        "plan": plan.model_copy(update={"drive_route": []}) if plan else None,
         "tradeoffs": final.tradeoffs,
         "safety_notes": final.safety_notes,
         "weather": chosen.weather if chosen else None,

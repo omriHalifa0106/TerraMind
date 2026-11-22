@@ -5,6 +5,7 @@ from terramind.schemas.plan import FinalAnswer, NodeError, RoutePlan, Stop, Stop
 from terramind.schemas.retrieval import (
     EvidenceChunk,
     LegEstimate,
+    NearbyPlace,
     PointOfInterest,
     ToolStatus,
     TrailCandidate,
@@ -35,6 +36,7 @@ __all__ = [
     "IssueCode",
     "LatLon",
     "LegEstimate",
+    "NearbyPlace",
     "NodeError",
     "PointOfInterest",
     "RoutePlan",

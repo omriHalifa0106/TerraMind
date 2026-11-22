@@ -326,3 +326,79 @@ def test_langsmith_is_exported_only_with_a_real_key(monkeypatch: Any) -> None:
     real = Settings(langsmith_tracing=True, langsmith_api_key="lsv2_pt_" + "x" * 40, langsmith_project="p")
     assert configure_langsmith(real) is True
     assert (os.environ["LANGSMITH_TRACING"], os.environ["LANGSMITH_PROJECT"]) == ("true", "p")
+
+
+def test_opening_hours_reader() -> None:
+    """Common OSM formats are read; anything else is 'unknown', never guessed open."""
+    from terramind.opening_hours import is_open
+
+    fri, sat, sun = date(2026, 11, 27), date(2026, 11, 28), date(2026, 11, 29)
+    week = "Su-Th 09:00-17:00; Fr 09:00-14:00; Sa off"
+    assert is_open(week, sun, time(12), 60) == "open"
+    assert is_open(week, fri, time(13, 30), 60) == "closed"  # would still be there at 14:30
+    assert is_open(week, sat, time(12)) == "closed"
+    assert is_open("Mo-Fr 12:00-15:00,18:00-23:00", fri, time(16)) == "closed"
+    assert is_open("Mo-Fr 12:00-15:00,18:00-23:00", fri, time(19), 90) == "open"
+    assert is_open("Fr-Sa 20:00-02:00", sat, time(1)) == "open"  # Friday's night continues
+    assert is_open("24/7", sat, time(23)) == "open"
+    assert is_open("10:00-18:00", sat, time(11)) == "open"  # no days = every day
+    assert is_open("Mo-Fr 10:00-18:00", sat, time(11)) == "closed"  # unmentioned day = closed (OSM)
+    assert is_open("Mo-Fr 10:00-18:00; PH off", sun, time(11)) == "unknown"  # holidays: not read
+    assert is_open(None, sun, time(11)) == "unknown"
+
+
+def test_day_plan_times_places_and_drops_what_does_not_fit() -> None:
+    """Coffee on the way moves the departure earlier; after the hike, a place closed on Saturday,
+    a viewpoint after sunset and a place past the day's hours are dropped, each with the reason."""
+    from datetime import datetime
+
+    from terramind.day_plan import add_places, leg_pairs, split_before_after
+    from terramind.schemas import NearbyPlace, RoutePlan, Stop
+
+    sat = date(2026, 11, 28)
+    plan = RoutePlan(
+        plan_id="p",
+        trail_id="t",
+        title="T",
+        walk_km=5,
+        walk_minutes=120,
+        stops=[
+            Stop(order=0, name="start", kind="trailhead", location=(33.0, 35.2), arrive_at=time(8)),
+            Stop(order=1, name="end", kind="end", location=(33.0, 35.2), arrive_at=time(10, 30)),
+        ],
+        start_time=time(8),
+        end_time=time(10, 30),
+        origin=(32.8, 35.0),
+        drive_minutes=60,
+        depart_at=time(7),
+    )
+
+    def place(pid: str, cat: str, hours: str | None) -> NearbyPlace:
+        return NearbyPlace(
+            poi_id=pid, name=pid, category=cat, location=(33.0, 35.21), distance_km=1, opening_hours=hours
+        )
+
+    cart = place("cart", "coffee_cart", "24/7")
+    closed = place("grill", "restaurant", "Su-Th 12:00-22:00; Sa off")
+    winery = place("winery", "winery", "Sa 10:00-16:00")
+    view = place("view", "viewpoint", None)
+    museum = place("museum", "museum", None)
+    before, after = split_before_after([cart, closed, winery, view, museum], on_way_ids={"cart"})
+    assert before == [cart] and after == [closed, winery, view, museum]
+    assert leg_pairs(before, after, has_origin=True)[:2] == [("origin", "cart"), ("cart", "trailhead")]
+
+    legs = {
+        ("origin", "cart"): LegEstimate(mode="drive", distance_km=40, minutes=40),
+        ("cart", "trailhead"): LegEstimate(mode="drive", distance_km=10, minutes=15),
+    }
+    req = TripRequest(region="r", trip_date=sat, semantic_query="q", day_hours=5)
+    out = add_places(plan, before, after, legs, req, sunset=datetime(2026, 11, 28, 11, 40))
+    names = [s.name for s in out.stops]
+    assert names[0] == "cart" and out.stops[0].arrive_at == time(7, 25)  # 08:00 - 15 drive - 20 coffee
+    assert out.depart_at == time(6, 45) and out.drive_minutes == 55
+    assert "winery" in names and "grill" not in names and "view" not in names
+    assert any("grill" in d and "סגור" in d for d in out.dropped_places)
+    assert any("view" in d and "השקיעה" in d for d in out.dropped_places)
+    assert any("museum" in d and "5 שעות" in d for d in out.dropped_places)  # 07:25 + 5h = 12:25
+    assert [s.order for s in out.stops] == list(range(len(out.stops)))
+    assert out.day_end_time is not None and out.day_end_time > out.end_time

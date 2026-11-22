@@ -22,6 +22,9 @@ Anything not in the spec is removed, not kept "just in case".
   volume). gis-server `estimate_leg(mode="drive")` uses it (falls back to straight line x factor);
   `geocode` uses Nominatim (1 req/s, cached). The UI's "יוצאים מ" (browser location or address)
   is sent with the message; agent 4 adds drive time, route and departure time to the plan.
+- Extension (user request, 2026-11-22): A places (`ingestion/places_loader.py` -> `pois` with day-plan
+  categories; gis `find_places_near`), B day length + places around the hike (`day_plan.py`,
+  `opening_hours.py`; agent 4 chooses, code times/drops). Next: C remembering, editable chat (checkpointer).
 - Step 5: README rewritten in Hebrew (replaces docs/ARCHITECTURE.md). LangSmith: `terramind/observability`
   exports LANGSMITH_* from .env at startup (pydantic-settings does not, so local runs never traced
   before). Verifying a real trace still needs a real LANGSMITH_API_KEY in .env.
@@ -48,7 +51,7 @@ Anything not in the spec is removed, not kept "just in case".
 uv sync --extra embeddings                 # deps (+ torch for bge-m3)
 docker compose up -d db osrm               # database (host port 5433) + OSRM (5000; first run prepares the map)
 uv run python -m scripts.migrate           # schema
-uv run python -m ingestion.osm_loader      # then derive_attributes, seed_knowledge
+uv run python -m ingestion.osm_loader      # then derive_attributes, seed_knowledge, places_loader
 uv run python -m ingestion.pipeline --once # weather + alerts into the DB (scripts.dev runs it on a schedule)
 uv run python -m scripts.dev               # backend stack -> http://127.0.0.1:8000 (serves web/dist)
 cd web; npm run dev                        # frontend dev server -> http://localhost:5174 (proxies API)

@@ -3,6 +3,7 @@ import { api } from "./api/client";
 import type { Health, Origin } from "./api/types";
 import { Chat } from "./components/Chat";
 import { DataFreshness } from "./components/DataFreshness";
+import { loadDayHours, saveDayHours } from "./components/HoursPicker";
 import { loadOrigin, saveOrigin } from "./components/OriginPicker";
 import { Logo, Wordmark } from "./components/icons";
 import { TrailMap } from "./components/TrailMap";
@@ -44,6 +45,11 @@ export function App() {
   const changeOrigin = (o: Origin | null) => {
     setOrigin(o);
     saveOrigin(o);
+  };
+  const [dayHours, setDayHours] = useState<number | null>(loadDayHours);
+  const changeDayHours = (v: number | null) => {
+    setDayHours(v);
+    saveDayHours(v);
   };
 
   // The map follows the newest turn, unless the user picked an older plan.
@@ -94,7 +100,9 @@ export function App() {
           mapTurnId={plan ? (mapTurn?.id ?? null) : null}
           origin={origin}
           onOriginChange={changeOrigin}
-          onSend={(t) => void send(t, origin)}
+          dayHours={dayHours}
+          onDayHoursChange={changeDayHours}
+          onSend={(t) => void send(t, origin, dayHours)}
           onStop={stop}
           onShowOnMap={showOnMap}
         />

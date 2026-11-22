@@ -12,6 +12,7 @@ estimate_leg), and the plan says when to leave home.
 from __future__ import annotations
 
 import asyncio
+import contextlib
 import uuid
 from datetime import date, datetime, time, timedelta
 from typing import Any
@@ -20,6 +21,15 @@ from langchain_core.messages import HumanMessage
 from langgraph.runtime import Runtime
 from pydantic import BaseModel, Field, ValidationError
 
+from terramind.day_plan import (
+    ON_THE_WAY,
+    Legs,
+    add_places,
+    default_places,
+    kosher_filter,
+    leg_pairs,
+    split_before_after,
+)
 from terramind.geo import DWELL_MINUTES, MAX_STOPS, WALK_DETOUR, hike_minutes, walk_minutes
 from terramind.geo import TERRAIN_FACTOR as TERRAIN
 from terramind.graph.nodes.common import emit, error, prompt, to_json
@@ -28,6 +38,7 @@ from terramind.llm.caching import cached_system
 from terramind.llm.client import LLMError
 from terramind.schemas import (
     LegEstimate,
+    NearbyPlace,
     NodeError,
     PointOfInterest,
     RoutePlan,
@@ -36,11 +47,25 @@ from terramind.schemas import (
     TrailCandidate,
     TripRequest,
 )
-from terramind.schemas.tool_results import PoiResult, TrailDetails
+from terramind.schemas.base import LatLon
+from terramind.schemas.tool_results import NearbyPlacesResult, PoiResult, TrailDetails
 
 TRAILS_TO_COMPARE = 3
 POI_BUFFER_M = 300
 MAX_POIS_IN_PROMPT = 12
+MAX_PLACES = 4  # day-plan places around the hike
+PLACES_RADIUS_KM = 12  # around the trailhead
+ON_THE_WAY_RADIUS_KM = 2  # around the drive from home
+PLACE_KINDS_BY_DEFAULT = [
+    "restaurant",
+    "cafe",
+    "coffee_cart",
+    "attraction",
+    "museum",
+    "winery",
+    "brewery",
+    "farm",
+]
 CATEGORY_LABELS = {
     "spring": "מעיין",
     "waterfall": "מפל",
@@ -66,6 +91,7 @@ class PlanDraft(BaseModel):
     trail_id: str
     title: str = Field(max_length=120)
     poi_ids: list[str] = Field(default_factory=list, max_length=MAX_STOPS)
+    place_ids: list[str] = Field(default_factory=list, max_length=MAX_PLACES)  # day-plan places, in order
     rationale: str = Field(max_length=600)
 
 
@@ -190,6 +216,108 @@ async def _drive_leg(
         return None
 
 
+async def _places(
+    ctx: TerraMindContext, req: TripRequest, trail: TrailCandidate, drive: LegEstimate | None
+) -> tuple[list[NearbyPlace], set[str]]:
+    """Places for the day around this trail, and which of them are on the drive from home."""
+    kinds = list(req.want_places) or PLACE_KINDS_BY_DEFAULT
+    near_args = {
+        "lat": trail.trailhead[0],
+        "lon": trail.trailhead[1],
+        "radius_km": PLACES_RADIUS_KM,
+        "categories": kinds,
+        "limit": 15,
+    }
+    calls = [ctx.tools.call("gis", "find_places_near", near_args)]
+    if drive is not None and len(drive.route) >= 2:
+        way_args = {
+            "route": drive.route,
+            "radius_km": ON_THE_WAY_RADIUS_KM,
+            "categories": sorted(ON_THE_WAY | set(req.want_places)),
+            "limit": 8,
+        }
+        calls.append(ctx.tools.call("gis", "find_places_near", way_args))
+    found: list[list[NearbyPlace]] = []
+    for raw in await asyncio.gather(*calls):
+        try:
+            found.append(NearbyPlacesResult.model_validate(raw).places)
+        except ValidationError:
+            found.append([])
+    near, on_way = found[0], (found[1] if len(found) > 1 else [])
+    way_ids = {p.poi_id for p in on_way}
+    places = kosher_filter([*on_way, *(p for p in near if p.poi_id not in way_ids)], req)
+    return places, way_ids
+
+
+async def _legs(ctx: TerraMindContext, pairs: list[tuple[str, str]], where: dict[str, LatLon]) -> Legs:
+    """The drives between consecutive day-plan stops (OSRM through the gis server), in parallel."""
+    pairs = [(a, b) for a, b in pairs if a in where and b in where]
+    raws = await asyncio.gather(
+        *(
+            ctx.tools.call(
+                "gis",
+                "estimate_leg",
+                {
+                    "from_lat": where[a][0],
+                    "from_lon": where[a][1],
+                    "to_lat": where[b][0],
+                    "to_lon": where[b][1],
+                    "mode": "drive",
+                },
+            )
+            for a, b in pairs
+        )
+    )
+    legs: Legs = {}
+    for pair, raw in zip(pairs, raws, strict=True):
+        # A leg that fails validation is left out: add_places falls back to the straight-line estimate.
+        with contextlib.suppress(ValidationError):
+            legs[pair] = LegEstimate.model_validate(raw)
+    return legs
+
+
+def _place_brief(places: list[NearbyPlace], on_way: set[str]) -> list[dict[str, Any]]:
+    """Compact place list for the prompt."""
+    return [
+        {
+            "place_id": p.poi_id,
+            "name": p.name,
+            "category": p.category,
+            "distance_km": p.distance_km,
+            "on_the_way": p.poi_id in on_way,
+            "opening_hours": p.opening_hours or "unknown",
+            "kosher": p.kosher,
+        }
+        for p in places
+    ]
+
+
+async def _with_places(
+    ctx: TerraMindContext,
+    plan: RoutePlan,
+    draft: PlanDraft,
+    req: TripRequest,
+    found: tuple[list[NearbyPlace], set[str]] | None,
+    budget_min: int,
+    sunset: datetime | None,
+) -> RoutePlan:
+    """Add the places the model chose (or sensible defaults) around the hike, timed by day_plan."""
+    places, on_way = found or ([], set())
+    by_place = {p.poi_id: p for p in places}
+    chosen = [by_place[i] for i in draft.place_ids if i in by_place]  # ids outside the list are ignored
+    if not chosen:
+        chosen = default_places(places, req, budget_min)
+    if not chosen:
+        return plan
+    before, after = split_before_after(chosen[:MAX_PLACES], on_way)
+    where: dict[str, LatLon] = {"trailhead": plan.stops[0].location, "hike_end": plan.stops[-1].location}
+    if plan.origin:
+        where["origin"] = plan.origin
+    where.update({p.poi_id: p.location for p in chosen})
+    legs = await _legs(ctx, leg_pairs(before, after, plan.origin is not None), where)
+    return add_places(plan, before, after, legs, req, sunset)
+
+
 def _poi_brief(pois: list[PointOfInterest]) -> list[dict[str, Any]]:
     """Compact POI list for the prompt: what the model needs to pick stops, nothing more."""
     ranked = sorted(pois, key=lambda p: (p.category not in STOP_CATEGORIES, p.distance_m))
@@ -216,6 +344,22 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
     fetched = await asyncio.gather(*(_map_data(ctx, c.trail_id) for c in top))
     data = {c.trail_id: f for c, f in zip(top, fetched, strict=True)}
     errors = [error("route_planner", "tool_error", p) for f in fetched for p in f[2]]
+
+    # The drive from home per candidate (also used to find a coffee on the way).
+    drives = await asyncio.gather(*(_drive_leg(ctx, req, c, errors) for c in top))
+    drive_by = {c.trail_id: d for c, d in zip(top, drives, strict=True)}
+    # A whole day out (hours given, or places asked for): places around each candidate.
+    wants_day = bool(req.day_hours or req.want_places)
+    places_by: dict[str, tuple[list[NearbyPlace], set[str]]] = {}
+    if wants_day:
+        found = await asyncio.gather(*(_places(ctx, req, c, drive_by[c.trail_id]) for c in top))
+        places_by = {c.trail_id: f for c, f in zip(top, found, strict=True)}
+    budgets = {
+        c.trail_id: int(req.day_hours * 60 - hike_minutes(c.length_km, req.group.pace_kmh))
+        for c in top
+        if req.day_hours
+    }
+    place_lists = {t: _place_brief(*f) for t, f in places_by.items()}
     # Only tips about the safe candidates (or general tips): text about a vetoed trail must not
     # tempt the model back to it.
     evidence = [
@@ -235,6 +379,8 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
                     content=(
                         f"REQUEST: {to_json(req)}\nCANDIDATES: {to_json(top)}\nNAMED BY USER: {named}\n"
                         f"POIS BY TRAIL: {to_json({tid: _poi_brief(f[1]) for tid, f in data.items()})}\n"
+                        f"PLACES BY TRAIL: {to_json(place_lists)}\n"
+                        f"MINUTES LEFT FOR PLACES (day length minus the hike): {budgets or 'not given'}\n"
                         f"EVIDENCE: {to_json(evidence)}"
                     )
                 ),
@@ -256,10 +402,27 @@ async def route_planner(state: TerraMindState, runtime: Runtime[TerraMindContext
     trail = by_id[draft.trail_id]
     start = next(a.start_time for a in safe if a.trail_id == trail.trail_id)  # the start agent 3 approved
     trail_end, pois, _ = data[trail.trail_id]
-    drive = await _drive_leg(ctx, req, trail, errors)
     plan = build_plan(
-        draft, trail, pois, trail_end, req, start, [c.trail_id for c in top if c is not trail], drive
+        draft,
+        trail,
+        pois,
+        trail_end,
+        req,
+        start,
+        [c.trail_id for c in top if c is not trail],
+        drive_by[trail.trail_id],
     )
+    if wants_day:
+        weather = next((a.weather for a in safe if a.trail_id == trail.trail_id), None)
+        plan = await _with_places(
+            ctx,
+            plan,
+            draft,
+            req,
+            places_by.get(trail.trail_id),
+            budgets.get(trail.trail_id, 0),
+            weather.sunset if weather else None,
+        )
 
     emit(runtime, "plan", node="route_planner", plan=plan.model_dump(mode="json"), rationale=draft.rationale)
     update: dict[str, Any] = {"plan": plan, "plan_rationale": draft.rationale}
