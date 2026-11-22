@@ -75,6 +75,7 @@ async def run_case(rt: AppRuntime, case: dict[str, Any]) -> dict[str, Any]:
         "plan": plan.model_dump(mode="json") if plan else None,
         "plan_trail_name": f"{trail.name} {trail.name_he or ''}" if trail else None,
         "plan_difficulty": trail.difficulty if trail else None,
+        "plan_length_km": trail.length_km if trail else None,
         "attempts": values.get("attempts", 0),
         "vetoes": sum(1 for v in history if not v.approved),
         "tool_calls": calls,
@@ -104,8 +105,11 @@ def score(output: dict[str, Any], case: dict[str, Any]) -> dict[str, float]:
     return scores
 
 
-async def run_local(judge: bool) -> list[dict[str, Any]]:
-    cases = load_cases()
+async def run_local(judge: bool, only: list[str] | None = None) -> list[dict[str, Any]]:
+    cases = [c for c in load_cases() if not only or c["id"] in only]
+    if only and len(cases) != len(set(only)):
+        unknown = sorted(set(only) - {c["id"] for c in cases})
+        raise SystemExit(f"unknown case id(s): {', '.join(unknown)}")
     rows: list[dict[str, Any]] = []
     async with inprocess_gateway() as gw, open_runtime(gateway=gw, persistent=False) as rt:
         for case in cases:
@@ -186,11 +190,12 @@ def main() -> None:
     ap.add_argument("--judge", action="store_true", help="add LLM-as-a-judge faithfulness (OpenRouter)")
     ap.add_argument("--langsmith", action="store_true", help="upload as a LangSmith experiment")
     ap.add_argument("--dataset", default="terramind-scenarios")
+    ap.add_argument("--only", nargs="+", metavar="CASE_ID", help="run only these case ids (local mode)")
     args = ap.parse_args()
     if args.langsmith:
         asyncio.run(run_langsmith(args.dataset))
     else:
-        asyncio.run(run_local(args.judge))
+        asyncio.run(run_local(args.judge, args.only))
 
 
 if __name__ == "__main__":

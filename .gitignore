@@ -7,3 +7,5 @@ __pycache__/
 .pytest_cache/
 ingestion/cache/*.json
 evals/results/
+web/node_modules/
+web/dist/

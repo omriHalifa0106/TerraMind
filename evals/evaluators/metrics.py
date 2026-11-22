@@ -50,8 +50,39 @@ def safety_loop(output: dict[str, Any], case: dict[str, Any]) -> dict[str, float
         checks.append(output.get("plan_difficulty") != case["forbidden_difficulty"])
     if case.get("expected_route"):
         checks.append(case["expected_route"] in output["path"])
+    if "max_vetoes" in case:  # soft issues (e.g. crowding) must warn, not veto
+        checks.append(output["vetoes"] <= case["max_vetoes"])
+    if "max_plan_length_km" in case and output.get("plan") is not None:
+        length = output.get("plan_length_km")
+        checks.append(length is not None and length <= case["max_plan_length_km"])
+    if case.get("expect_issue_codes"):  # e.g. DATA_UNAVAILABLE must surface, not pass silently
+        raised = {
+            issue["code"]
+            for verdict in output.get("data", {}).get("verdicts", [])
+            for issue in verdict.get("issues", [])
+        }
+        checks.extend(code in raised for code in case["expect_issue_codes"])
     checks.append(output["attempts"] <= 3)
     return {"safety_loop": round(sum(checks) / len(checks), 3)}
+
+
+def _matches(actual: Any, expected: Any) -> bool:
+    """Subset match: dicts recurse, an expected list must be contained in the actual list."""
+    if isinstance(expected, dict):
+        return isinstance(actual, dict) and all(_matches(actual.get(k), v) for k, v in expected.items())
+    if isinstance(expected, list):
+        return isinstance(actual, list) and all(item in actual for item in expected)
+    return bool(actual == expected)
+
+
+def intake_accuracy(output: dict[str, Any], case: dict[str, Any]) -> dict[str, float]:
+    """Share of `expected_request` fields that intake extracted correctly (only when defined)."""
+    expected: dict[str, Any] = case.get("expected_request") or {}
+    if not expected:
+        return {}
+    request = output.get("data", {}).get("request") or {}
+    hits = sum(_matches(request.get(k), v) for k, v in expected.items())
+    return {"intake_accuracy": round(hits / len(expected), 3)}
 
 
 def grounding(output: dict[str, Any], case: dict[str, Any]) -> dict[str, float]:
@@ -69,4 +100,4 @@ def grounding(output: dict[str, Any], case: dict[str, Any]) -> dict[str, float]:
     return {"citation_validity": round(citation_validity, 3), "number_grounding": round(grounded, 3)}
 
 
-ALL = (tool_accuracy, safety_loop, grounding)
+ALL = (tool_accuracy, safety_loop, grounding, intake_accuracy)
