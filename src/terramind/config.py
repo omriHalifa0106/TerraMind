@@ -91,6 +91,9 @@ class Settings(BaseSettings):
     # --- graph limits ---
     max_search_rounds: int = 2  # agent 2 runs again (relaxed) when agent 3 vetoes every candidate
     candidates_to_check: int = 5  # agent 3 checks this many of agent 2's best candidates
+    # Longest trail agent 2 may propose for a day hike. OSM also holds multi-day trails (38-1,155 km);
+    # the longest real day trail in the catalog is ~15 km. A trail the user names is still checked.
+    max_day_hike_km: float = 25
     recursion_limit: int = 25
 
 

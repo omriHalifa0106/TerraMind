@@ -62,12 +62,14 @@ def search_args(req: TripRequest, exclude: list[str], relaxed: bool) -> dict[str
 
 
 def _planned_calls(
-    model_calls: list[dict[str, Any]], req: TripRequest, exclude: list[str], relaxed: bool
+    model_calls: list[dict[str, Any]], req: TripRequest, exclude: list[str], relaxed: bool, day_cap_km: float
 ) -> list[tuple[str, dict[str, Any]]]:
-    """The model's tool calls, with the safety guards applied (exclusions always enforced)."""
+    """The model's tool calls, with the guards applied: vetoed trails always excluded, and never a
+    multi-day trail for a day hike (max_km capped, whatever the model asked for)."""
     by_name = {c["name"]: dict(c["args"]) for c in model_calls if c.get("name") in TOOLS}
     spatial = by_name.get("search_trails") or search_args(req, exclude, relaxed)
     spatial["exclude_ids"] = list(dict.fromkeys([*(spatial.get("exclude_ids") or []), *exclude]))
+    spatial["max_km"] = min(spatial.get("max_km") or day_cap_km, day_cap_km)
     semantic = by_name.get("hybrid_search") or {"query": req.semantic_query}
     semantic["k"] = EVIDENCE_K
     return [("search_trails", spatial), ("hybrid_search", semantic)]
@@ -134,7 +136,7 @@ async def catalog_search(state: TerraMindState, runtime: Runtime[TerraMindContex
     except LLMError as exc:
         model_calls = []
         errors.append(error("catalog_search", "llm_error", exc))
-    calls = _planned_calls(model_calls, req, exclude, relaxed)
+    calls = _planned_calls(model_calls, req, exclude, relaxed, ctx.settings.max_day_hike_km)
     emit(runtime, "tool_calls", node="catalog_search", calls=[{"tool": n, "args": a} for n, a in calls])
 
     # The two searches are independent, so they run at the same time.

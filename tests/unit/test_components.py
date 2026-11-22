@@ -11,7 +11,7 @@ from ingestion.seed_knowledge import match_trail, read_tips
 from mcp_servers.knowledge_server.hybrid import rrf_fuse, to_or_tsquery
 from mcp_servers.weather_server.open_meteo import grid_key, parse_days, parse_snapshot, split_batch
 from terramind.embeddings import HashEmbedder, to_pgvector
-from terramind.graph.nodes.catalog_search import fuse_candidates, search_args
+from terramind.graph.nodes.catalog_search import _planned_calls, fuse_candidates, search_args
 from terramind.graph.nodes.route_planner import PlanDraft, build_plan
 from terramind.regions import region_of, resolve_region
 from terramind.schemas import (
@@ -105,6 +105,22 @@ def test_search_args_map_request_and_relax() -> None:
     assert strict["tags"] == ["water"] and strict["loop_only"] and strict["max_km"] == 10.5
     loose = search_args(req, ["x"], relaxed=True)
     assert loose["tags"] == [] and not loose["loop_only"] and loose["exclude_ids"] == ["x"]
+
+
+def test_day_hike_cap_holds_whatever_the_model_asks() -> None:
+    """Multi-day trails (Golan Trail, 125 km) never reach agent 3 as day-hike candidates."""
+    req = TripRequest(region="Golan", semantic_query="q")
+
+    def max_km(model_args: dict[str, Any] | None) -> float:
+        calls = [{"name": "search_trails", "args": model_args}] if model_args is not None else []
+        return dict(_planned_calls(calls, req, ["x"], relaxed=False, day_cap_km=25))["search_trails"][
+            "max_km"
+        ]
+
+    assert max_km(None) == 25  # code-built fallback
+    assert max_km({"region": "Golan"}) == 25  # the model left it out
+    assert max_km({"region": "Golan", "max_km": 120}) == 25  # the model asked for too much
+    assert max_km({"region": "Golan", "max_km": 8}) == 8  # a tighter user limit is kept
 
 
 def test_build_plan_orders_stops_along_the_trail() -> None:
