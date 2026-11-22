@@ -5,6 +5,7 @@ Run locally with `uv run python -m scripts.dev` (all services) or `uv run python
 
 from __future__ import annotations
 
+import asyncio
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
@@ -17,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from sse_starlette.sse import EventSourceResponse
 
+from ingestion import alerts_ingest
 from terramind.api.sse import stream_turn
 from terramind.config import get_settings
 from terramind.runtime import AppRuntime, open_runtime
@@ -79,13 +81,31 @@ async def scenarios() -> dict[str, Any]:
 
 @app.post("/scenarios/{name}")
 async def set_scenario(name: str) -> dict[str, Any]:
-    """Demo control: switch the Mock Alerts API scenario (closures, floods, crowding)."""
-    async with httpx.AsyncClient(base_url=get_settings().mock_alerts_url, timeout=3) as c:
-        resp = await c.post(f"/scenarios/{name}")
+    """Demo control: switch the Mock Alerts API scenario (closures, floods, crowding).
+
+    The alerts server reads stored data, so a real switch triggers an alerts pipeline run right
+    away instead of waiting for the schedule. The UI re-sends the selection before every message,
+    so an unchanged scenario returns immediately.
+    """
+    s = get_settings()
+    async with httpx.AsyncClient(base_url=s.mock_alerts_url, timeout=3) as c:
+        try:
+            before = (await c.get("/scenarios/current")).json().get("name")
+            resp = await c.post(f"/scenarios/{name}")
+        except httpx.HTTPError as exc:
+            raise HTTPException(503, f"mock alerts API unreachable: {exc}") from exc
     if resp.status_code != 200:
         raise HTTPException(resp.status_code, resp.text)
     data: dict[str, Any] = resp.json()
-    return data
+    if before == name:
+        return {**data, "ingested": False}
+    try:
+        async with asyncio.timeout(s.ingest_job_timeout_s):
+            rows = await alerts_ingest.run(s.database_url, "scenario")
+    except Exception as exc:  # the switch happened; report that the stored data did not follow yet
+        logging.getLogger("terramind.api").warning("alerts ingestion after scenario switch failed: %s", exc)
+        return {**data, "ingested": False, "detail": f"{type(exc).__name__}: {exc}"[:300]}
+    return {**data, "ingested": True, "rows": rows}
 
 
 @app.get("/health")

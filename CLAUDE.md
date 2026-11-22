@@ -13,8 +13,12 @@ Anything not in the spec is removed, not kept "just in case".
 - Steps 1-2 done: cleanup; graph rebuilt as exactly 5 agents in `src/terramind/graph/nodes/`
   (request_analyst, catalog_search, enrichment, route_planner, presenter). No checkpointer or memory:
   one graph run per message. Verified with real Claude: ~25 s per request (was ~110 s).
-- Next: 3 data pipeline (scheduled ingestion of weather/alerts into tables), 4 OSRM drive times
-  (if time allows), 5 LangSmith check + Hebrew README explaining every part.
+- Step 3 done: data pipeline (`ingestion/pipeline.py`, migration 003). Weather (Open-Meteo, batched,
+  16 days per trailhead cell) and alerts (Mock Alerts API) are ingested on a schedule into
+  `weather_forecasts`, `trail_status`, `trail_alerts`; every run is logged in `ingestion_runs`.
+  The weather/alerts MCP servers read these tables (weather falls back to a live fetch; stale alerts
+  -> `unavailable`). Switching the demo scenario triggers an alerts run (API `/scenarios/{name}`).
+- Next: 4 OSRM drive times (if time allows), 5 LangSmith check + Hebrew README explaining every part.
 - Alerts/closures still come from the Mock Alerts API (matched by trail name) until a real source is found.
 - `docs/ARCHITECTURE.md` describes the old 12-node design; it is replaced by the README in step 5.
 
@@ -40,6 +44,7 @@ uv sync --extra embeddings                 # deps (+ torch for bge-m3)
 docker compose up -d db                    # database (host port 5433)
 uv run python -m scripts.migrate           # schema
 uv run python -m ingestion.osm_loader      # then derive_attributes, seed_knowledge
+uv run python -m ingestion.pipeline --once # weather + alerts into the DB (scripts.dev runs it on a schedule)
 uv run python -m scripts.dev               # backend stack -> http://127.0.0.1:8000 (serves web/dist)
 cd web; npm run dev                        # frontend dev server -> http://localhost:5174 (proxies API)
 cd web; npm run build                      # production build into web/dist

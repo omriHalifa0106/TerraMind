@@ -12,7 +12,7 @@ from mcp_servers.gis_server.server import mcp as gis
 from mcp_servers.knowledge_server.server import mcp as knowledge
 from mcp_servers.weather_server import server as weather_server
 from terramind.mcp_client.client import McpGateway
-from tests.harness import inprocess_gateway, set_scenario
+from tests.harness import clear_stored_weather, inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
 
@@ -64,8 +64,9 @@ async def test_hebrew_semantic_query_returns_relevant_chunks(loaded_db: str) -> 
     assert {c["trail_id"] for c in linked["chunks"]} <= {"osm-relation-9000004", None}
 
 
-async def test_weather_cache_horizon_and_timeout() -> None:
-    weather_server._cache.clear()
+async def test_weather_store_horizon_and_timeout(loaded_db: str) -> None:
+    """A live answer is stored, and a nearby trailhead (same ~1 km cell) is then served from the table."""
+    await clear_stored_weather()
     d = date.today() + timedelta(days=2)
     payload = {
         "daily": {
@@ -105,13 +106,13 @@ async def test_weather_cache_horizon_and_timeout() -> None:
         assert t["status"] == "unavailable"
 
 
-async def test_alerts_through_gateway_and_missing_server() -> None:
+async def test_alerts_through_gateway_and_missing_server(loaded_db: str) -> None:
     async with inprocess_gateway() as gw:
-        set_scenario("kziv_closed")
-        st = await gw.call("alerts", "get_trail_status", {"trail_id": "x", "trail_name": "שביל נחל כזיב"})
+        await set_scenario("kziv_closed")
+        st = await gw.call("alerts", "get_trail_status", {"trail_id": "osm-relation-9000001"})
         assert st["trail"]["is_open"] is False
-        set_scenario("normal")
-        st = await gw.call("alerts", "get_trail_status", {"trail_id": "x", "trail_name": "שביל נחל כזיב"})
+        await set_scenario("normal")
+        st = await gw.call("alerts", "get_trail_status", {"trail_id": "osm-relation-9000001"})
         assert st["trail"]["is_open"] is True
     down_gw = McpGateway({"weather": "http://127.0.0.1:9/mcp"}, timeout_s=2)  # nothing listens on port 9
     async with down_gw:

@@ -29,7 +29,7 @@ def parse_sse(body: str) -> list[tuple[str, dict]]:  # type: ignore[type-arg]
 
 
 async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
-    set_scenario("kziv_closed")
+    await set_scenario("kziv_closed")
     req = TripRequest(region="Upper Galilee", trail_types=[TrailType.WATER], semantic_query="water hike")
     async with inprocess_gateway() as gw, open_runtime(gateway=gw) as rt:
         rt.context.llm = FakeLLM(req)
@@ -53,4 +53,4 @@ async def test_chat_stream_emits_the_agents_events(loaded_db: str) -> None:
             assert (await c.get("/trails/nope/geojson")).status_code == 404
             health = (await c.get("/health")).json()
             assert sorted(health["mcp_servers"]) == ["alerts", "gis", "knowledge", "weather"]
-    set_scenario("normal")
+    await set_scenario("normal")

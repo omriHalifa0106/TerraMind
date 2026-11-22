@@ -1,4 +1,4 @@
-"""Start the whole stack locally (mock alerts API, 4 MCP servers, API) in one terminal.
+"""Start the whole stack locally (mock alerts API, 4 MCP servers, data pipeline, API) in one terminal.
 
     uv run python -m scripts.dev            # Ctrl+C stops everything
 
@@ -48,6 +48,9 @@ SERVICES = [
     ),
     Service("mcp-weather", [PY, "-m", "mcp_servers.weather_server.server"], port=8103),
     Service("mcp-alerts", [PY, "-m", "mcp_servers.alerts_server.server"], port=8104),
+    # Scheduled weather + alerts ingestion. No port: it is "ready" once started; a first run that
+    # fails (e.g. mock-alerts still starting) is retried after INGEST_RETRY_AFTER_FAILURE_S.
+    Service("pipeline", [PY, "-m", "ingestion.pipeline"]),
 ]
 API = Service("api", [PY, "-m", "scripts.run_api"], health_url="http://127.0.0.1:8000/health", wait_s=120)
 
@@ -59,6 +62,8 @@ def _crashed(procs: Procs) -> str | None:
 
 
 def wait_ready(svc: Service, procs: Procs) -> None:
+    if not svc.health_url and not svc.port:
+        return
     deadline = time.monotonic() + svc.wait_s
     while time.monotonic() < deadline:
         if (dead := _crashed(procs)) is not None:

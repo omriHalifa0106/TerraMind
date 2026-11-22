@@ -66,6 +66,18 @@ class Settings(BaseSettings):
     region_name: str = "Upper Galilee & Golan"
     region_bbox: tuple[float, float, float, float] = DEFAULT_BBOX
 
+    # --- data pipeline (ingestion/pipeline.py): scheduled weather + alerts ingestion ---
+    weather_ingest_interval_min: float = 60
+    alerts_ingest_interval_min: float = 10
+    ingest_retry_after_failure_s: float = 30  # a failed run is retried sooner than the interval
+    ingest_job_timeout_s: float = 300
+    ingest_concurrency: int = 16  # parallel requests to the alerts source
+    forecast_days: int = 16  # Open-Meteo's horizon
+    weather_batch_size: int = 50  # trailheads per Open-Meteo request (it accepts coordinate lists)
+    # Stored data older than this is not trusted: weather is re-fetched live, alerts count as unavailable.
+    weather_max_age_h: float = 6
+    alerts_max_age_min: float = 60
+
     # --- graph limits ---
     max_search_rounds: int = 2  # agent 2 runs again (relaxed) when agent 3 vetoes every candidate
     candidates_to_check: int = 5  # agent 3 checks this many of agent 2's best candidates

@@ -8,7 +8,7 @@ from typing import Any
 from ingestion.osm_loader import build_query, parse_overpass
 from ingestion.seed_knowledge import match_trail, read_tips
 from mcp_servers.knowledge_server.hybrid import rrf_fuse, to_or_tsquery
-from mcp_servers.weather_server.open_meteo import parse_snapshot
+from mcp_servers.weather_server.open_meteo import grid_key, parse_days, parse_snapshot, split_batch
 from terramind.embeddings import HashEmbedder, to_pgvector
 from terramind.graph.nodes.catalog_search import fuse_candidates, search_args
 from terramind.graph.nodes.route_planner import PlanDraft, build_plan
@@ -141,6 +141,20 @@ def test_open_meteo_parsing() -> None:
     )
     assert s.precip_prob_max_pct == 70 and s.sunset is not None and s.sunset.hour == 16
     assert s.hourly_precip_prob == {14: 80}
+
+
+def test_open_meteo_batch_splits_points_and_days() -> None:
+    """The pipeline asks for many points at once: a list back, each point with every day."""
+    point = {
+        "daily": {"time": ["2026-12-05", "2026-12-06"], "temperature_2m_max": [18, 21]},
+        "hourly": {"time": ["2026-12-05T09:00", "2026-12-06T09:00"], "precipitation_probability": [10, 60]},
+    }
+    answers = split_batch([point, point])
+    days = parse_days(answers[0])
+    assert len(answers) == 2 and [d.temp_max_c for d in days] == [18, 21]
+    assert days[1].for_date == date(2026, 12, 6) and days[1].hourly_precip_prob == {9: 60}
+    assert split_batch(point) == [point]  # a one-point request answers with an object
+    assert grid_key(33.0512, 35.1812) == grid_key(33.0488, 35.1788)  # same ~1 km cell
 
 
 async def test_overpass_falls_back_to_a_mirror_on_502(tmp_path: Path, monkeypatch: object) -> None:

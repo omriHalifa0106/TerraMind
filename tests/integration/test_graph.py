@@ -12,14 +12,13 @@ import pytest
 import respx
 from langchain_core.messages import HumanMessage
 
-from mcp_servers.weather_server import server as weather_server
 from terramind.graph.nodes.enrichment import _conditions
 from terramind.graph.state import turn_input
 from terramind.mcp_client.client import start_call_log
 from terramind.runtime import AppRuntime, open_runtime
 from terramind.schemas import TrailCandidate, TrailType, TripRequest
 from tests.fakes import DownLLM, FakeLLM
-from tests.harness import inprocess_gateway, set_scenario
+from tests.harness import clear_stored_weather, inprocess_gateway, set_scenario
 
 pytestmark = pytest.mark.db
 KZIV = "osm-relation-9000001"
@@ -43,7 +42,6 @@ def calm_weather() -> Iterator[None]:
         },
         "hourly": {"time": [], "precipitation_probability": []},
     }
-    weather_server._cache.clear()
     with respx.mock(assert_all_called=False) as m:
         m.get(url__startswith="https://api.open-meteo.com").mock(
             return_value=httpx.Response(200, json=payload)
@@ -53,9 +51,10 @@ def calm_weather() -> Iterator[None]:
 
 @pytest.fixture
 async def rt(loaded_db: str, calm_weather: None) -> AsyncIterator[AppRuntime]:
+    await clear_stored_weather()
     async with inprocess_gateway() as gw, open_runtime(gateway=gw) as runtime:
         yield runtime
-    set_scenario("normal")
+    await set_scenario("normal")
 
 
 async def run(rt: AppRuntime, llm: FakeLLM, text: str) -> dict[str, Any]:
@@ -78,7 +77,7 @@ async def run(rt: AppRuntime, llm: FakeLLM, text: str) -> dict[str, Any]:
 
 
 async def test_closed_trail_is_vetoed_before_planning_and_explained(rt: AppRuntime) -> None:
-    set_scenario("kziv_closed")
+    await set_scenario("kziv_closed")
     llm = FakeLLM(GALILEE_WATER)
     v = await run(rt, llm, "אני רוצה לטייל בנחל כזיב מחר, מסלול מים")
     assert v["_path"] == ["request_analyst", "catalog_search", "enrichment", "route_planner", "presenter"]
@@ -93,7 +92,7 @@ async def test_closed_trail_is_vetoed_before_planning_and_explained(rt: AppRunti
 
 
 async def test_everything_closed_searches_again_then_gives_no_plan(rt: AppRuntime) -> None:
-    set_scenario("everything_closed")
+    await set_scenario("everything_closed")
     calls = start_call_log()
     v = await run(rt, FakeLLM(GALILEE_WATER), "Water hike in the Upper Galilee tomorrow")
     assert v["_path"].count("catalog_search") == 2 and "route_planner" not in v["_path"]
@@ -128,7 +127,7 @@ async def test_late_start_is_moved_earlier_by_the_rules(rt: AppRuntime) -> None:
 
 
 async def test_agent_2_runs_the_model_tool_calls_and_enforces_exclusions(rt: AppRuntime) -> None:
-    set_scenario("everything_closed")
+    await set_scenario("everything_closed")
     scripted = [
         {"name": "search_trails", "args": {"region": "Upper Galilee", "tags": ["water"], "exclude_ids": []}},
         {"name": "hybrid_search", "args": {"query": "מסלול מים"}},
@@ -150,16 +149,32 @@ async def test_llm_outage_ends_with_a_message_not_a_crash(rt: AppRuntime) -> Non
 
 
 async def test_closures_match_every_trail_name(rt: AppRuntime) -> None:
-    """OSM may keep the route number in `name` and the Hebrew name in `name_he`."""
-    set_scenario("kziv_closed")
-    trail = TrailCandidate(
-        trail_id="osm-relation-424242",
-        name="מסלול 2224",
-        name_he="ליד נחל כזיב",
-        region="r",
-        length_km=3.2,
-        trailhead=(33.05, 35.2),
+    """OSM may keep the route number in `name` and the Hebrew name in `name_he`: the alerts
+    pipeline must match a closure on either of them."""
+    from mcp_servers.common.db import get_pool
+
+    pool = await get_pool()
+    original = await pool.fetchrow("SELECT name, name_he FROM trails WHERE trail_id = $1", KZIV)
+    await pool.execute(
+        "UPDATE trails SET name = 'מסלול 2224', name_he = 'ליד נחל כזיב' WHERE trail_id = $1", KZIV
     )
-    _, status, alerts = await _conditions(rt.context.tools, trail, GALILEE_WATER)
+    try:
+        await set_scenario("kziv_closed")
+        trail = TrailCandidate(
+            trail_id=KZIV,
+            name="מסלול 2224",
+            name_he="ליד נחל כזיב",
+            region="r",
+            length_km=3.2,
+            trailhead=(33.05, 35.2),
+        )
+        _, status, alerts = await _conditions(rt.context.tools, trail, GALILEE_WATER)
+    finally:
+        await pool.execute(
+            "UPDATE trails SET name = $2, name_he = $3 WHERE trail_id = $1",
+            KZIV,
+            original["name"],
+            original["name_he"],
+        )
     assert status is not None and status.is_open is False
     assert any(a.kind == "maintenance" for a in alerts)

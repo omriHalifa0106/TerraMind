@@ -15,7 +15,6 @@ dependencies = [
     "pydantic>=2.12",
     "pydantic-settings>=2.16",
     "httpx>=0.28",
-    "cachetools>=6",
     "langsmith>=0.15",
     "langchain-anthropic>=1.0",
 ]
@@ -31,7 +30,6 @@ dev = [
     "respx>=0.23",
     "mypy>=2",
     "ruff>=0.17",
-    "types-cachetools",
 ]
 
 [build-system]
